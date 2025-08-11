@@ -203,19 +203,19 @@ def evaluator_section(df_main):
             100% { transform: translateX(0); opacity: 1; }
         }
         .level-1-heading {
-            background-color: #A69500 !important; /* Gold */
+            background-color: #0FA753 !important;
             padding: 10px;
             border-radius: 5px;
             color: white;
         }
         .level-2-heading {
-            background-color: #00A191 !important; /* Bright */
+            background-color: #00A191 !important;
             padding: 10px;
             border-radius: 5px;
             color: white;
         }
         .level-3-heading {
-            background-color: #8EC200 !important; /* Brighter */
+            background-color: #8EC200 !important;
             padding: 10px;
             border-radius: 5px;
             color: white;
@@ -232,27 +232,35 @@ def evaluator_section(df_main):
             st.error("❌ 'Trainer ID' column missing in data.")
             return
 
-        evaluator_role = st.selectbox("Select Evaluator Role", ["Technical Evaluator", "School Operations Evaluator"], key="evaluator_role")
+        evaluator_role = st.selectbox(
+            "Select Evaluator Role",
+            ["Technical Evaluator", "School Operations Evaluator"],
+            key="evaluator_role"
+        )
         evaluator_username = st.session_state.get("logged_user", "")
 
         relevant_params = {
             "Technical Evaluator": [
-                "Has Knowledge of STEM (5)", "Ability to integrate STEM With related activities (10)",
-                "Discusses Up-to-date information related to STEM (5)", "Provides Course Outline (5)",
-                "Language Fluency (5)", "Preparation with Lesson Plan / Practicals (5)"
+                "Has Knowledge of STEM (5)",
+                "Ability to integrate STEM With related activities (10)",
+                "Discusses Up-to-date information related to STEM (5)",
+                "Provides Course Outline (5)",
+                "Language Fluency (5)",
+                "Preparation with Lesson Plan / Practicals (5)"
             ],
             "School Operations Evaluator": [
-                "Time Based Activity (5)", "Student Engagement Ideas (5)", "Pleasing Look (5)",
-                "Poised & Confident (5)", "Well Modulated Voice (5)"
+                "Time Based Activity (5)",
+                "Student Engagement Ideas (5)",
+                "Pleasing Look (5)",
+                "Poised & Confident (5)",
+                "Well Modulated Voice (5)"
             ]
         }
 
         mode = st.radio("Select Trainer ID Mode", ["Enter Existing Trainer ID", "New Trainer Creation ID"])
-        trainer_id = ""
-        trainer_name = ""
-        department = ""
-        trainer_email = ""
+        trainer_id, trainer_name, department, trainer_email = "", "", "", ""
 
+        # Existing Trainer ID
         if mode.startswith("Enter"):
             try:
                 if os.path.exists(DEFAULT_DATA_FILE):
@@ -283,6 +291,7 @@ def evaluator_section(df_main):
                 st.error("Failed to load trainer data.")
                 return
 
+        # New Trainer ID
         else:
             trainer_id = st.text_input("Enter New Trainer ID (leave blank to auto-generate)")
             trainer_name = st.text_input("Trainer Name (for new ID)")
@@ -302,14 +311,13 @@ def evaluator_section(df_main):
                     st.warning("Please enter Trainer Name, Department, and Email to auto-generate Trainer ID.")
 
         past_assessments = df[df["Trainer ID"] == trainer_id] if trainer_id else pd.DataFrame()
+
         if not past_assessments.empty:
             st.markdown("### 🔁 Previous Assessments")
             st.dataframe(past_assessments, use_container_width=True)
 
         levels = ["LEVEL #1", "LEVEL #2", "LEVEL #3"]
-        level_status = {}
-        submissions = {}
-        assessment_data = {}
+        level_status, submissions, assessment_data = {}, {}, {}
 
         try:
             for level in levels:
@@ -327,9 +335,9 @@ def evaluator_section(df_main):
             st.error("Failed to process assessment levels.")
 
         for level in levels:
-            # Apply bright background colors to level headings
             level_class = f"level-{level.split('#')[1]}-heading"
             st.markdown(f'<div class="{level_class}">🔹 {level} Assessment</div>', unsafe_allow_html=True)
+
             with st.expander(f"{level} Assessment"):
                 try:
                     if level_status.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
@@ -340,57 +348,68 @@ def evaluator_section(df_main):
                         if level == "LEVEL #1" or \
                            (level == "LEVEL #2" and level_status.get("LEVEL #1") == "QUALIFIED") or \
                            (level == "LEVEL #3" and level_status.get("LEVEL #2") == "QUALIFIED"):
-                            # Course inputs in horizontal tabs
+
                             st.markdown(f"### {level} Courses")
                             courses = {}
                             all_courses_filled = True
                             course_params = {f"Course :{i}": {} for i in range(1, 11)}
+
                             tabs = st.tabs([f"Course :{i}" for i in range(1, 11)])
                             for i, tab in enumerate(tabs, 1):
                                 with tab:
-                                    # Course inputs (moved above parameters)
                                     course_key = f"{level} Course :{i}"
-                                    course_name = st.text_input(
-                                        f"{course_key} Name",
-                                        key=f"course_{level}_{i}_{trainer_id}",
-                                        placeholder="Type course name or select below"
-                                    )
+                                    course_name = ""
                                     course_select = st.selectbox(
-                                        f"{course_key} Select",
+                                        f"{course_key} Select Course Name",
                                         options=COURSE_OPTIONS,
-                                        key=f"course_select_{level}_{i}_{trainer_id}"
+                                        key=f"course_select_{level}_{i}_{trainer_id}",
+                                        placeholder="Select course name or select below"
                                     )
-                                    # Role-specific parameters for this course
-                                    st.markdown(f"#### Parameters for Course :{i}")
-                                    part_params = [p for p in relevant_params[evaluator_role] if any(p in col for col in df.columns)]
-                                    for k in part_params:
-                                        value = past_assessments[k].iloc[0] if not past_assessments.empty and k in past_assessments.columns else ""
-                                        course_params[f"Course :{i}"][k] = st.text_input(
-                                            f"{k} (Course :{i})",
-                                            value=value,
-                                            key=f"{k}_{level}_course_{i}_{trainer_id}"
-                                        )
-                                    # TOTAL, AVERAGE, STATUS (moved above Course Passed)
-                                    total = st.number_input(
-                                        f"Course :{i} TOTAL",
-                                        min_value=0, max_value=100, step=1,
-                                        key=f"total_{level}_course_{i}_{trainer_id}"
-                                    )
-                                    avg = st.number_input(
-                                        f"Course :{i} AVERAGE",
-                                        min_value=0.0, max_value=100.0, step=0.1,
-                                        key=f"avg_{level}_course_{i}_{trainer_id}"
-                                    )
-                                    status_overall = st.selectbox(
-                                        f"Course :{i} STATUS",
-                                        ["CLEARED", "REDO"],
-                                        key=f"status_{level}_course_{i}_{trainer_id}"
-                                    )
-                                    # Course Passed checkbox
-                                    course_passed = st.checkbox(
-                                        f"{course_key} Passed",
-                                        key=f"course_pass_{level}_{i}_{trainer_id}"
-                                    )
+
+                                    # === PARAMETER HANDLING ===
+                                    if evaluator_role == "Technical Evaluator":
+                                        param_has_stem = st.number_input("Has Knowledge of STEM (5)", 0, 5, key=f"stem_{level}_{i}_{trainer_id}")
+                                        param_integration = st.number_input("Ability to integrate STEM With related activities (10)", 0, 10, key=f"integration_{level}_{i}_{trainer_id}")
+                                        param_up_to_date = st.number_input("Discusses Up-to-date information related to STEM (5)", 0, 5, key=f"uptodate_{level}_{i}_{trainer_id}")
+                                        param_outline = st.number_input("Provides Course Outline (5)", 0, 5, key=f"outline_{level}_{i}_{trainer_id}")
+                                        param_language = st.number_input("Language Fluency (5)", 0, 5, key=f"language_{level}_{i}_{trainer_id}")
+                                        param_preparation = st.number_input("Preparation with Lesson Plan / Practicals (5)", 0, 5, key=f"preparation_{level}_{i}_{trainer_id}")
+                                    else:
+                                        part_params = [p for p in relevant_params[evaluator_role] if any(p in col for col in df.columns)]
+                                        for k in part_params:
+                                            value = past_assessments[k].iloc[0] if not past_assessments.empty and k in past_assessments.columns else ""
+                                            course_params[f"Course :{i}"][k] = st.text_input(
+                                                f"{k}", value=value, key=f"{k}_{level}_course_{i}_{trainer_id}"
+                                            )
+
+                                    ###total = st.number_input(f"Course :{i} TOTAL", 0, 100, key=f"total_{level}_{i}_{trainer_id}")
+                                    ###avg = st.number_input(f"Course :{i} AVERAGE", 0.0, 100.0, step=0.1, key=f"avg_{level}_{i}_{trainer_id}")
+
+                                    # Display-only TOTAL and AVERAGE fields
+                                    calculated_total = st.session_state.get(f"total_{level}_{i}_{trainer_id}", 0)
+                                    calculated_avg = st.session_state.get(f"avg_{level}_{i}_{trainer_id}", 0.0)
+
+                                    ###st.markdown(f"**Course :{i} TOTAL:** {calculated_total}")
+                                    ###st.markdown(f"**Course :{i} AVERAGE:** {calculated_avg:.2f}")
+
+                                    # CALCULATE BUTTON FOR TECHNICAL EVALUATOR
+                                    if evaluator_role == "Technical Evaluator":
+                                        if st.button(f"Calculate Course {i}", key=f"calc_{level}_{i}_{trainer_id}"):
+                                            calculated_total = (
+                                                param_has_stem +
+                                                param_integration +
+                                                param_up_to_date +
+                                                param_outline +
+                                                param_language +
+                                                param_preparation
+                                            )
+                                            calculated_avg = calculated_total / 6
+                                            st.session_state[f"total_{level}_{i}_{trainer_id}"] = calculated_total
+                                            st.session_state[f"avg_{level}_{i}_{trainer_id}"] = calculated_avg
+                                            st.success(f"Calculated Total: {calculated_total}, Average: {calculated_avg:.2f}")
+                                    status_overall = st.selectbox(f"Course :{i} STATUS", ["CLEARED", "REDO"], key=f"status_{level}_{i}_{trainer_id}")
+                                    course_passed = st.checkbox(f"{course_key} Passed", key=f"course_pass_{level}_{i}_{trainer_id}")
+
                                     final_course = course_name if course_name else course_select
                                     courses[course_key] = {
                                         "name": final_course,
@@ -402,8 +421,7 @@ def evaluator_section(df_main):
                                     }
                                     if not final_course or not course_passed:
                                         all_courses_filled = False
-
-                                    
+        
 
                             # Level assessment inputs
                             level_status_key = f"{level}_status_{evaluator_role}"
@@ -416,60 +434,57 @@ def evaluator_section(df_main):
                                     "Manager Referral (Required for Level 3)",
                                     key=f"manager_referral_{level}_{trainer_id}"
                                 )
-
-                            
+                            reminder = st.text_area("Reminder", key=f"reminder_{level}_{trainer_id}")
                             reminder_email = st.text_input(
                                 "Evaluator Email for Reminder", key=f"reminder_email_{level}_{trainer_id}"
                             )
-                            reminder = st.text_area("Reminder Message Content", key=f"reminder_{level}_{trainer_id}")
-
-                            # New SEND EMAIL button with updated logic
-                            if st.button("SEND EMAIL", key=f"send_email_{level}_{trainer_id}"):
-                                try:
-                                    if not reminder_email or '@' not in reminder_email:
-                                        st.error("No valid recipient email found. Please enter a valid email address for sending reminders.")
-                                    else:
-                                        email_body = f"Reminder for Trainer ID: {trainer_id}\n"
-                                        email_body += f"Trainer Name: {trainer_name}\n"
-                                        email_body += f"Department: {department}\n"
-                                        email_body += f"Date of Assessment: {datetime.today().date()}\n"
-                                        email_body += f"Evaluator: {evaluator_username} ({evaluator_role})\n"
-                                        email_body += f"\nReminder Message:\n{reminder or 'No reminder message provided.'}\n"
-
-                                        # Include brief course status summary
-                                        email_body += f"\nAssessment Overview for {level}:\n"
-                                        for i in range(1, 11):
-                                            course_key = f"{level} Course :{i}"  # Fixed course_key format
-                                            course_data = courses.get(course_key, {})
-                                            course_name = course_data.get("name", "N/A")
-                                            course_passed = course_data.get("passed", False)
-                                            email_body += f"  Course :{i}: {course_name} ({'Passed' if course_passed else 'Not Passed'})\n"
-
-                                        if manager_referral and level == "LEVEL #3":
-                                            email_body += f"\nManager Referral: {manager_referral}\n"
-
-                                        email_subject = f"Reminder for Trainer {trainer_id} - {level} - {datetime.today().date()}"
-                                        mailto_link = f"mailto:{urllib.parse.quote(reminder_email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-
-                                        st.markdown(f'<a href="{mailto_link}" target="_blank">Open Email Client for Reminder</a>', unsafe_allow_html=True)
-                                        st.success(f"Reminder email prepared for {reminder_email} (Simulation)")
-                                except Exception as e:
-                                    logger.error(f"Error preparing reminder email for {level}: {str(e)}")
-                                    st.error(f"Failed to prepare reminder email for {level}.")
-
+                            if reminder_email:
+                                email_client = st.selectbox("Choose Email Client", ["Default", "Gmail", "Outlook"], key=f"email_client_{level}_{trainer_id}")
+                                if st.button("SEND EMAIL", key=f"send_email_{level}_{trainer_id}"):
+                                    try:
+                                        if not reminder_email or '@' not in reminder_email:
+                                            st.error("No valid recipient email found.")
+                                        else:
+                                            email_body = f"Reminder for Trainer ID: {trainer_id}\n"
+                                            email_body += f"Trainer Name: {trainer_name}\n"
+                                            email_body += f"Department: {department}\n"
+                                            email_body += f"Date of Assessment: {datetime.today().date()}\n"
+                                            email_body += f"Evaluator: {evaluator_username} ({evaluator_role})\n"
+                                            email_body += f"\nReminder Message:\n{reminder or 'No reminder message provided.'}\n"
+                                            email_body += f"\nAssessment Overview for {level}:\n"
+                                            for i in range(1, 11):
+                                                course_key = f"{level} Course :{i}"
+                                                course_data = courses.get(course_key, {})
+                                                course_name = course_data.get("name", "N/A")
+                                                course_passed = course_data.get("passed", False)
+                                                email_body += f"  Course :{i}: {course_name} ({'Passed' if course_passed else 'Not Passed'})\n"
+                                            if manager_referral and level == "LEVEL #3":
+                                                email_body += f"\nManager Referral: {manager_referral}\n"
+                                            email_subject = f"Reminder for Trainer {trainer_id} - {level} - {datetime.today().date()}"
+                                            if email_client == "Default":
+                                                link = f"mailto:{urllib.parse.quote(reminder_email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                            elif email_client == "Gmail":
+                                                link = f"https://mail.google.com/mail?view=cm&fs=1&to={urllib.parse.quote(reminder_email)}&su={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                            elif email_client == "Outlook":
+                                                link = f"https://outlook.live.com/mail/0/deeplink/compose?to={urllib.parse.quote(reminder_email)}&subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                            st.markdown(f'<a href="{link}" target="_blank">Open in {email_client}</a>', unsafe_allow_html=True)
+                                            st.success(f"Reminder email prepared for {reminder_email} in {email_client}.")
+                                    except Exception as e:
+                                        logger.error(f"Error preparing reminder email for {level}: {str(e)}")
+                                        st.error(f"Failed to prepare reminder email for {level}.")
                             # Send Score Card button for this level
                             send_report_enabled = status == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2 and all_courses_filled
                             score_status = st.selectbox(
                                 "Status of Score Card",
                                 ["Score Cards has not been sent"] if not send_report_enabled else ["Score Cards has been sent", "Score Cards has not been sent"],
                                 key=f"score_status_{level}_{trainer_id}",
-                                help="Select the status of the score card. 'Score Cards has not been sent' enables sending."
+                                help="Select the status of the score card."
                             )
                             send_score_card_disabled = score_status != "Score Cards has not been sent"
                             if st.button("SEND SCORE CARD", disabled=send_score_card_disabled, key=f"send_score_card_{level}_{trainer_id}"):
                                 try:
                                     if not trainer_email or '@' not in trainer_email:
-                                        st.error("No valid trainer email found. Please ensure the trainer's email is provided in EVALUATOR_INPUT.csv or during new trainer creation.")
+                                        st.error("No valid trainer email found.")
                                     else:
                                         email_body = f"Score Card for Trainer ID: {trainer_id}\n"
                                         email_body += f"Trainer Name: {trainer_name}\n"
@@ -880,6 +895,7 @@ def admin_section(df_main):
             with st.form("add_eval_form", clear_on_submit=True):
                 new_username = st.text_input("Username", key="new_eval_user")
                 new_password = st.text_input("Password", type="password", key="new_eval_pass")
+                confirm_password = st.text_input("Confirm Password", type="password", key="new_eval_confirm_pass")
                 full_name = st.text_input("Full Name", key="new_eval_name")
                 email = st.text_input("Email", key="new_eval_email")
                 role_select = st.selectbox("Role", ["Evaluator", "Viewer", "Super Administrator"], key="new_eval_role")
@@ -888,6 +904,8 @@ def admin_section(df_main):
                     try:
                         if not new_username or not new_password:
                             st.error("Username and password are required.")
+                        elif new_password != confirm_password:
+                            st.error("Passwords do not match.")
                         elif new_username in evaluators_df["username"].values:
                             st.error("Username already exists.")
                         else:
@@ -932,18 +950,27 @@ def admin_section(df_main):
                                                  key=f"role_{selected_eval}")
                         change_password = st.checkbox("Change Password", key=f"chpass_{selected_eval}")
                         new_pass = ""
+                        confirm_pass = ""
                         if change_password:
                             new_pass = st.text_input("New Password", type="password", key=f"newpass_{selected_eval}")
+                            confirm_pass = st.text_input("Confirm New Password", type="password", key=f"confirmpass_{selected_eval}")
                         edit_submitted = st.form_submit_button("Save Changes")
                         if edit_submitted:
-                            idx = evaluators_df.index[evaluators_df["username"] == selected_eval][0]
-                            evaluators_df.at[idx, "full_name"] = edit_full_name
-                            evaluators_df.at[idx, "email"] = edit_email
-                            evaluators_df.at[idx, "role"] = edit_role
-                            if change_password and new_pass:
-                                evaluators_df.at[idx, "password_hash"] = hash_password(new_pass)
-                            save_evaluators(evaluators_df)
-                            st.success(f"Evaluator '{selected_eval}' updated.")
+                            try:
+                                if change_password and new_pass != confirm_pass:
+                                    st.error("Passwords do not match.")
+                                else:
+                                    idx = evaluators_df.index[evaluators_df["username"] == selected_eval][0]
+                                    evaluators_df.at[idx, "full_name"] = edit_full_name
+                                    evaluators_df.at[idx, "email"] = edit_email
+                                    evaluators_df.at[idx, "role"] = edit_role
+                                    if change_password and new_pass:
+                                        evaluators_df.at[idx, "password_hash"] = hash_password(new_pass)
+                                    save_evaluators(evaluators_df)
+                                    st.success(f"Evaluator '{selected_eval}' updated.")
+                            except Exception as e:
+                                logger.error(f"Error editing evaluator: {str(e)}")
+                                st.error("Failed to edit evaluator.")
                 except Exception as e:
                     logger.error(f"Error editing evaluator: {str(e)}")
                     st.error("Failed to edit evaluator.")
