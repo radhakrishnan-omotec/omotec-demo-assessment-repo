@@ -12,6 +12,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+import warnings
+
+# Suppress all warnings globally
+warnings.filterwarnings('ignore')
 
 # Configure logging for Streamlit Cloud
 logging.basicConfig(
@@ -64,6 +68,8 @@ CSV_COLUMNS = [
     f"{level} Course :{i} AVERAGE" for level in ["LEVEL #1", "LEVEL #2", "LEVEL #3"] for i in range(1, 11)
 ] + [
     f"{level} Course :{i} STATUS" for level in ["LEVEL #1", "LEVEL #2", "LEVEL #3"] for i in range(1, 11)
+] + [
+    f"{level} Course :{i} Remarks" for level in ["LEVEL #1", "LEVEL #2", "LEVEL #3"] for i in range(1, 11)
 ]
 
 EVALUATOR_COLUMNS = ["username", "password_hash", "full_name", "email", "role", "created_at"]
@@ -118,7 +124,7 @@ def generate_new_trainer_id():
                 return f"TR00{next_number}"
     except Exception as e:
         logger.error(f"Trainer ID generation failed: {str(e)}")
-        st.warning("Failed to generate Trainer ID. Using default ID.")
+        st.error("Failed to generate Trainer ID. Using default ID.")
     return "TR001"
 
 def save_new_trainer_to_input(trainer_id, trainer_name, department, trainer_email=""):
@@ -139,31 +145,26 @@ def save_new_trainer_to_input(trainer_id, trainer_name, department, trainer_emai
         if "Email" not in df.columns:
             df["Email"] = ""
             
-        new_entry = {
-            "Trainer ID": trainer_id,
-            "Trainer Name": trainer_name,
-            "Department": department,
-            "Branch": "",
-            "Email": trainer_email
-        }
-        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+        if trainer_id in df["Trainer ID"].values:
+            idx = df.index[df["Trainer ID"] == trainer_id][0]
+            df.at[idx, "Trainer Name"] = trainer_name
+            df.at[idx, "Department"] = department
+            df.at[idx, "Email"] = trainer_email
+        else:
+            new_entry = {
+                "Trainer ID": trainer_id,
+                "Trainer Name": trainer_name,
+                "Department": department,
+                "Branch": "",
+                "Email": trainer_email
+            }
+            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
         df.to_csv(DEFAULT_DATA_FILE, index=False)
         return df
     except Exception as e:
         logger.error(f"Error saving new trainer: {str(e)}")
         st.error("Failed to save new trainer information.")
         return pd.DataFrame(columns=["Trainer ID", "Trainer Name", "Department", "Branch", "Email"])
-
-def send_email_reminder(email, level, trainer_id, trainer_name, reminder):
-    try:
-        email_body = f"Reminder for {level} Assessment\nTrainer ID: {trainer_id}\nTrainer Name: {trainer_name}\nReminder: {reminder}"
-        email_subject = f"{level} Assessment Reminder for Trainer {trainer_id}"
-        mailto_link = f"mailto:{urllib.parse.quote(email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-        return mailto_link
-    except Exception as e:
-        logger.error(f"Error preparing email reminder for {level}: {str(e)}")
-        st.error(f"Failed to prepare reminder email for {level}.")
-        return None
 
 def load_evaluators():
     try:
@@ -278,11 +279,7 @@ def evaluator_section(df_main):
                     trainer_name = trainer_data.get("Trainer Name", "")
                     department = trainer_data.get("Department", "")
                     trainer_email = trainer_data.get("Email", "")
-                    st.success(f"Loaded Trainer: {trainer_name} ({department})")
-                    if trainer_email:
-                        st.info(f"Trainer Email: {trainer_email}")
-                    else:
-                        st.warning("No email found for this trainer in EVALUATOR_INPUT.csv")
+                    st.success(f"Loaded Trainer ID: {trainer_id}")
                 else:
                     st.error("EVALUATOR_INPUT.csv not found.")
                     return
@@ -291,27 +288,25 @@ def evaluator_section(df_main):
                 st.error("Failed to load trainer data.")
                 return
 
+            # Make details editable
+            trainer_name = st.text_input("Trainer Name", value=trainer_name)
+            department = st.text_input("Department", value=department)
+            trainer_email = st.text_input("Trainer Email", value=trainer_email)
+
         # New Trainer ID
         else:
             trainer_id = st.text_input("Enter New Trainer ID (leave blank to auto-generate)")
-            trainer_name = st.text_input("Trainer Name (for new ID)")
-            department = st.text_input("Department (for new ID)")
-            trainer_email = st.text_input("Trainer Email (for new ID)")
+            trainer_name = st.text_input("Trainer Name")
+            department = st.text_input("Department")
+            trainer_email = st.text_input("Trainer Email")
             if trainer_id.strip() == "":
                 if trainer_name and department and trainer_email:
-                    try:
-                        trainer_id = generate_new_trainer_id()
-                        st.success(f"Auto-generated Trainer ID: {trainer_id}")
-                        save_new_trainer_to_input(trainer_id, trainer_name, department, trainer_email)
-                        st.success(f"Trainer {trainer_name} ({trainer_id}) added to existing trainers list.")
-                    except Exception as e:
-                        logger.error(f"Error creating new trainer: {str(e)}")
-                        st.error("Failed to create new trainer.")
+                    st.info("Trainer ID will be auto-generated upon submission.")
                 else:
-                    st.warning("Please enter Trainer Name, Department, and Email to auto-generate Trainer ID.")
+                    st.warning("Please enter Trainer Name, Department, and Email for auto-generation.")
 
+        # Display previous assessments
         past_assessments = df[df["Trainer ID"] == trainer_id] if trainer_id else pd.DataFrame()
-
         if not past_assessments.empty:
             st.markdown("### 🔁 Previous Assessments")
             st.dataframe(past_assessments, use_container_width=True)
@@ -340,6 +335,11 @@ def evaluator_section(df_main):
 
             with st.expander(f"{level} Assessment"):
                 try:
+                    courses = {}
+                    course_params = {f"Course :{i}": {} for i in range(1, 11)}
+                    manager_referral = ""
+                    status = "NOT QUALIFIED"
+
                     if level_status.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
                         st.write(f"{level} already qualified by both evaluators.")
                     elif level_status.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) == 1:
@@ -348,13 +348,11 @@ def evaluator_section(df_main):
                         if level == "LEVEL #1" or \
                            (level == "LEVEL #2" and level_status.get("LEVEL #1") == "QUALIFIED") or \
                            (level == "LEVEL #3" and level_status.get("LEVEL #2") == "QUALIFIED"):
-
                             st.markdown(f"### {level} Courses")
-                            courses = {}
-                            all_courses_filled = True
-                            course_params = {f"Course :{i}": {} for i in range(1, 11)}
-
                             tabs = st.tabs([f"Course :{i}" for i in range(1, 11)])
+                            all_courses_filled = True
+                            all_courses_passed = True
+
                             for i, tab in enumerate(tabs, 1):
                                 with tab:
                                     course_key = f"{level} Course :{i}"
@@ -366,7 +364,6 @@ def evaluator_section(df_main):
                                         placeholder="Select course name or select below"
                                     )
 
-                                    # === PARAMETER HANDLING ===
                                     if evaluator_role == "Technical Evaluator":
                                         param_has_stem = st.number_input("Has Knowledge of STEM (5)", 0, 5, key=f"stem_{level}_{i}_{trainer_id}")
                                         param_integration = st.number_input("Ability to integrate STEM With related activities (10)", 0, 10, key=f"integration_{level}_{i}_{trainer_id}")
@@ -374,39 +371,136 @@ def evaluator_section(df_main):
                                         param_outline = st.number_input("Provides Course Outline (5)", 0, 5, key=f"outline_{level}_{i}_{trainer_id}")
                                         param_language = st.number_input("Language Fluency (5)", 0, 5, key=f"language_{level}_{i}_{trainer_id}")
                                         param_preparation = st.number_input("Preparation with Lesson Plan / Practicals (5)", 0, 5, key=f"preparation_{level}_{i}_{trainer_id}")
-                                    else:
-                                        part_params = [p for p in relevant_params[evaluator_role] if any(p in col for col in df.columns)]
-                                        for k in part_params:
-                                            value = past_assessments[k].iloc[0] if not past_assessments.empty and k in past_assessments.columns else ""
-                                            course_params[f"Course :{i}"][k] = st.text_input(
-                                                f"{k}", value=value, key=f"{k}_{level}_course_{i}_{trainer_id}"
-                                            )
 
-                                    ###total = st.number_input(f"Course :{i} TOTAL", 0, 100, key=f"total_{level}_{i}_{trainer_id}")
-                                    ###avg = st.number_input(f"Course :{i} AVERAGE", 0.0, 100.0, step=0.1, key=f"avg_{level}_{i}_{trainer_id}")
+                                        course_params[f"Course :{i}"] = {
+                                            "Has Knowledge of STEM (5)": param_has_stem,
+                                            "Ability to integrate STEM With related activities (10)": param_integration,
+                                            "Discusses Up-to-date information related to STEM (5)": param_up_to_date,
+                                            "Provides Course Outline (5)": param_outline,
+                                            "Language Fluency (5)": param_language,
+                                            "Preparation with Lesson Plan / Practicals (5)": param_preparation
+                                        }
 
-                                    # Display-only TOTAL and AVERAGE fields
+                                    elif evaluator_role == "School Operations Evaluator":
+                                        param_time = st.number_input("Time Based Activity (5)", 0, 5, key=f"time_{level}_{i}_{trainer_id}")
+                                        param_engagement = st.number_input("Student Engagement Ideas (5)", 0, 5, key=f"engagement_{level}_{i}_{trainer_id}")
+                                        param_pleasing = st.number_input("Pleasing Look (5)", 0, 5, key=f"pleasing_{level}_{i}_{trainer_id}")
+                                        param_poised = st.number_input("Poised & Confident (5)", 0, 5, key=f"poised_{level}_{i}_{trainer_id}")
+                                        param_voice = st.number_input("Well Modulated Voice (5)", 0, 5, key=f"voice_{level}_{i}_{trainer_id}")
+
+                                        course_params[f"Course :{i}"] = {
+                                            "Time Based Activity (5)": param_time,
+                                            "Student Engagement Ideas (5)": param_engagement,
+                                            "Pleasing Look (5)": param_pleasing,
+                                            "Poised & Confident (5)": param_poised,
+                                            "Well Modulated Voice (5)": param_voice
+                                        }
+
+                                    remarks = st.text_area("Remarks", key=f"remarks_{level}_{i}_{trainer_id}")
+
+                                    if evaluator_role == "Technical Evaluator":
+                                        if st.button(f"Calculate Score", key=f"calc_{level}_{i}_{trainer_id}"):
+                                            try:
+                                                calculated_total = (
+                                                    param_has_stem + param_integration + param_up_to_date +
+                                                    param_outline + param_language + param_preparation
+                                                )
+                                                calculated_avg = calculated_total / 6.0 if 6 > 0 else 0.0
+                                                st.session_state[f"total_{level}_{i}_{trainer_id}"] = calculated_total
+                                                st.session_state[f"avg_{level}_{i}_{trainer_id}"] = calculated_avg
+                                                st.success(f"Calculated Total: {calculated_total}, Average: {calculated_avg:.2f}")
+
+                                                # Update EVALUATOR_INPUT.csv
+                                                save_new_trainer_to_input(trainer_id, trainer_name, department, trainer_email)
+
+                                                # Update assessment_data.csv for this course
+                                                course_entry = {
+                                                    "Trainer ID": trainer_id,
+                                                    "Trainer Name": trainer_name,
+                                                    "Department": department,
+                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
+                                                    "Evaluator Username": evaluator_username,
+                                                    "Evaluator Role": evaluator_role,
+                                                    f"{course_key}": course_select,
+                                                    f"{course_key} TOTAL": calculated_total,
+                                                    f"{course_key} AVERAGE": calculated_avg,
+                                                    f"{course_key} STATUS": st.session_state.get(f"status_{level}_{i}_{trainer_id}", "REDO"),
+                                                    f"{course_key} Remarks": remarks
+                                                }
+                                                for param, value in course_params[f"Course :{i}"].items():
+                                                    course_entry[f"{param} Course :{i}"] = value
+
+                                                updated_df = df.copy()
+                                                if trainer_id in updated_df["Trainer ID"].values:
+                                                    idx = updated_df.index[updated_df["Trainer ID"] == trainer_id].tolist()[-1]
+                                                    for key, value in course_entry.items():
+                                                        updated_df.at[idx, key] = value
+                                                else:
+                                                    updated_df = pd.concat([updated_df, pd.DataFrame([course_entry])], ignore_index=True)
+                                                updated_df.to_csv(CSV_FILE, index=False)
+
+                                                # Reload and display updated previous assessments
+                                                df_updated = load_data()
+                                                past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
+                                                if not past_assessments_updated.empty:
+                                                    st.markdown("### 🔁 Updated Previous Assessments")
+                                                    st.dataframe(past_assessments_updated, use_container_width=True)
+                                            except Exception as e:
+                                                logger.error(f"Error updating data on Calculate Score: {str(e)}")
+                                                st.error("Failed to update assessment data.")
+                                    elif evaluator_role == "School Operations Evaluator":
+                                        if st.button(f"Calculate Score", key=f"calc_{level}_{i}_{trainer_id}"):
+                                            try:
+                                                calculated_total = (
+                                                    param_time + param_engagement + param_pleasing +
+                                                    param_poised + param_voice
+                                                )
+                                                calculated_avg = calculated_total / 5.0 if 5 > 0 else 0.0
+                                                st.session_state[f"total_{level}_{i}_{trainer_id}"] = calculated_total
+                                                st.session_state[f"avg_{level}_{i}_{trainer_id}"] = calculated_avg
+                                                st.success(f"Calculated Total: {calculated_total}, Average: {calculated_avg:.2f}")
+
+                                                # Update EVALUATOR_INPUT.csv
+                                                save_new_trainer_to_input(trainer_id, trainer_name, department, trainer_email)
+
+                                                # Update assessment_data.csv for this course
+                                                course_entry = {
+                                                    "Trainer ID": trainer_id,
+                                                    "Trainer Name": trainer_name,
+                                                    "Department": department,
+                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
+                                                    "Evaluator Username": evaluator_username,
+                                                    "Evaluator Role": evaluator_role,
+                                                    f"{course_key}": course_select,
+                                                    f"{course_key} TOTAL": calculated_total,
+                                                    f"{course_key} AVERAGE": calculated_avg,
+                                                    f"{course_key} STATUS": st.session_state.get(f"status_{level}_{i}_{trainer_id}", "REDO"),
+                                                    f"{course_key} Remarks": remarks
+                                                }
+                                                for param, value in course_params[f"Course :{i}"].items():
+                                                    course_entry[f"{param} Course :{i}"] = value
+
+                                                updated_df = df.copy()
+                                                if trainer_id in updated_df["Trainer ID"].values:
+                                                    idx = updated_df.index[updated_df["Trainer ID"] == trainer_id].tolist()[-1]
+                                                    for key, value in course_entry.items():
+                                                        updated_df.at[idx, key] = value
+                                                else:
+                                                    updated_df = pd.concat([updated_df, pd.DataFrame([course_entry])], ignore_index=True)
+                                                updated_df.to_csv(CSV_FILE, index=False)
+
+                                                # Reload and display updated previous assessments
+                                                df_updated = load_data()
+                                                past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
+                                                if not past_assessments_updated.empty:
+                                                    st.markdown("### 🔁 Updated Previous Assessments")
+                                                    st.dataframe(past_assessments_updated, use_container_width=True)
+                                            except Exception as e:
+                                                logger.error(f"Error updating data on Calculate Score: {str(e)}")
+                                                st.error("Failed to update assessment data.")
+
                                     calculated_total = st.session_state.get(f"total_{level}_{i}_{trainer_id}", 0)
                                     calculated_avg = st.session_state.get(f"avg_{level}_{i}_{trainer_id}", 0.0)
-
-                                    ###st.markdown(f"**Course :{i} TOTAL:** {calculated_total}")
-                                    ###st.markdown(f"**Course :{i} AVERAGE:** {calculated_avg:.2f}")
-
-                                    # CALCULATE BUTTON FOR TECHNICAL EVALUATOR
-                                    if evaluator_role == "Technical Evaluator":
-                                        if st.button(f"Calculate Course {i}", key=f"calc_{level}_{i}_{trainer_id}"):
-                                            calculated_total = (
-                                                param_has_stem +
-                                                param_integration +
-                                                param_up_to_date +
-                                                param_outline +
-                                                param_language +
-                                                param_preparation
-                                            )
-                                            calculated_avg = calculated_total / 6
-                                            st.session_state[f"total_{level}_{i}_{trainer_id}"] = calculated_total
-                                            st.session_state[f"avg_{level}_{i}_{trainer_id}"] = calculated_avg
-                                            st.success(f"Calculated Total: {calculated_total}, Average: {calculated_avg:.2f}")
                                     status_overall = st.selectbox(f"Course :{i} STATUS", ["CLEARED", "REDO"], key=f"status_{level}_{i}_{trainer_id}")
                                     course_passed = st.checkbox(f"{course_key} Passed", key=f"course_pass_{level}_{i}_{trainer_id}")
 
@@ -414,120 +508,102 @@ def evaluator_section(df_main):
                                     courses[course_key] = {
                                         "name": final_course,
                                         "passed": course_passed,
-                                        "total": total,
-                                        "average": avg,
+                                        "total": calculated_total,
+                                        "average": calculated_avg,
                                         "status_overall": status_overall,
-                                        "params": course_params[f"Course :{i}"]
+                                        "params": course_params[f"Course :{i}"],
+                                        "remarks": remarks
                                     }
                                     if not final_course or not course_passed:
                                         all_courses_filled = False
-        
+                                        all_courses_passed = False
+                                    st.session_state[f"course_passed_{level}_{i}_{trainer_id}"] = course_passed
 
-                            # Level assessment inputs
-                            level_status_key = f"{level}_status_{evaluator_role}"
-                            status_options = ["NOT QUALIFIED"] if not all_courses_filled else ["QUALIFIED", "NOT QUALIFIED"]
-                            status = st.selectbox(f"{level} Status", status_options, key=level_status_key)
+                        # Check if all courses are passed and named
+                        all_courses_filled = all(
+                            courses.get(f"{level} Course :{i}", {}).get("name") and 
+                            courses.get(f"{level} Course :{i}", {}).get("passed") 
+                            for i in range(1, 11)
+                        )
+                        all_courses_passed = all(
+                            st.session_state.get(f"course_passed_{level}_{i}_{trainer_id}", False)
+                            for i in range(1, 11)
+                        )
 
-                            manager_referral = ""
-                            if level == "LEVEL #3":
-                                manager_referral = st.text_input(
-                                    "Manager Referral (Required for Level 3)",
-                                    key=f"manager_referral_{level}_{trainer_id}"
-                                )
-                            reminder = st.text_area("Reminder", key=f"reminder_{level}_{trainer_id}")
-                            reminder_email = st.text_input(
-                                "Evaluator Email for Reminder", key=f"reminder_email_{level}_{trainer_id}"
+                        level_status_key = f"{level}_status_{evaluator_role}"
+                        status_options = ["QUALIFIED", "NOT QUALIFIED"]
+                        default_status_index = 0 if all_courses_filled and all_courses_passed else 1
+                        status = st.selectbox(
+                            f"{level} Status",
+                            status_options,
+                            index=default_status_index,
+                            key=level_status_key
+                        )
+
+                        if level == "LEVEL #3":
+                            manager_referral = st.text_input(
+                                "Manager Referral (Required for Level 3)",
+                                key=f"manager_referral_{level}_{trainer_id}"
                             )
-                            if reminder_email:
-                                email_client = st.selectbox("Choose Email Client", ["Default", "Gmail", "Outlook"], key=f"email_client_{level}_{trainer_id}")
-                                if st.button("SEND EMAIL", key=f"send_email_{level}_{trainer_id}"):
-                                    try:
-                                        if not reminder_email or '@' not in reminder_email:
-                                            st.error("No valid recipient email found.")
-                                        else:
-                                            email_body = f"Reminder for Trainer ID: {trainer_id}\n"
-                                            email_body += f"Trainer Name: {trainer_name}\n"
-                                            email_body += f"Department: {department}\n"
-                                            email_body += f"Date of Assessment: {datetime.today().date()}\n"
-                                            email_body += f"Evaluator: {evaluator_username} ({evaluator_role})\n"
-                                            email_body += f"\nReminder Message:\n{reminder or 'No reminder message provided.'}\n"
-                                            email_body += f"\nAssessment Overview for {level}:\n"
-                                            for i in range(1, 11):
-                                                course_key = f"{level} Course :{i}"
-                                                course_data = courses.get(course_key, {})
-                                                course_name = course_data.get("name", "N/A")
-                                                course_passed = course_data.get("passed", False)
-                                                email_body += f"  Course :{i}: {course_name} ({'Passed' if course_passed else 'Not Passed'})\n"
-                                            if manager_referral and level == "LEVEL #3":
-                                                email_body += f"\nManager Referral: {manager_referral}\n"
-                                            email_subject = f"Reminder for Trainer {trainer_id} - {level} - {datetime.today().date()}"
-                                            if email_client == "Default":
-                                                link = f"mailto:{urllib.parse.quote(reminder_email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-                                            elif email_client == "Gmail":
-                                                link = f"https://mail.google.com/mail?view=cm&fs=1&to={urllib.parse.quote(reminder_email)}&su={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-                                            elif email_client == "Outlook":
-                                                link = f"https://outlook.live.com/mail/0/deeplink/compose?to={urllib.parse.quote(reminder_email)}&subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-                                            st.markdown(f'<a href="{link}" target="_blank">Open in {email_client}</a>', unsafe_allow_html=True)
-                                            st.success(f"Reminder email prepared for {reminder_email} in {email_client}.")
-                                    except Exception as e:
-                                        logger.error(f"Error preparing reminder email for {level}: {str(e)}")
-                                        st.error(f"Failed to prepare reminder email for {level}.")
-                            # Send Score Card button for this level
-                            send_report_enabled = status == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2 and all_courses_filled
-                            score_status = st.selectbox(
-                                "Status of Score Card",
-                                ["Score Cards has not been sent"] if not send_report_enabled else ["Score Cards has been sent", "Score Cards has not been sent"],
-                                key=f"score_status_{level}_{trainer_id}",
-                                help="Select the status of the score card."
-                            )
-                            send_score_card_disabled = score_status != "Score Cards has not been sent"
-                            if st.button("SEND SCORE CARD", disabled=send_score_card_disabled, key=f"send_score_card_{level}_{trainer_id}"):
-                                try:
-                                    if not trainer_email or '@' not in trainer_email:
-                                        st.error("No valid trainer email found.")
-                                    else:
-                                        email_body = f"Score Card for Trainer ID: {trainer_id}\n"
-                                        email_body += f"Trainer Name: {trainer_name}\n"
-                                        email_body += f"Department: {department}\n"
-                                        email_body += f"Date of Assessment: {datetime.today().date()}\n"
-                                        email_body += f"Evaluator: {evaluator_username} ({evaluator_role})\n"
-                                        email_body += f"\nAssessment Details for {level}:\n"
-                                        for i in range(1, 11):
-                                            course_key = f"{level} Course :{i}"
-                                            course_data = courses.get(course_key, {})
-                                            email_body += f"\nCourse :{i}:\n"
-                                            for param in relevant_params[evaluator_role]:
-                                                param_value = course_data.get("params", {}).get(param, "N/A")
-                                                email_body += f"  {param}: {param_value}\n"
-                                            course_name = course_data.get("name", "N/A")
-                                            course_passed = course_data.get("passed", False)
-                                            email_body += f"  Course Name: {course_name} ({'Passed' if course_passed else 'Not Passed'})\n"
-                                            email_body += f"  TOTAL: {course_data.get('total', 'N/A')}\n"
-                                            email_body += f"  AVERAGE: {course_data.get('average', 'N/A')}\n"
-                                            email_body += f"  STATUS: {course_data.get('status_overall', 'N/A')}\n"
-                                        email_body += f"\n{level} Status: {status}\n"
-                                        if manager_referral and level == "LEVEL #3":
-                                            email_body += f"Manager Referral: {manager_referral}\n"
-                                        email_body += f"Reminder: {reminder or 'None'}"
-                                        email_subject = f"Score Card for Trainer {trainer_id} - {level} - {datetime.today().date()}"
-                                        mailto_link = f"mailto:{urllib.parse.quote(trainer_email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
-                                        st.markdown(f'<a href="{mailto_link}" target="_blank">Open Email Client</a>', unsafe_allow_html=True)
-                                        st.success(f"Score card email prepared for Trainer ID: {trainer_id} to {trainer_email} for {level}")
-                                        score_status = "Score Cards has been sent"
-                                        st.session_state[f"score_status_{level}_{trainer_id}"] = score_status
-                                except Exception as e:
-                                    logger.error(f"Error sending score card for {level}: {str(e)}")
-                                    st.error(f"Failed to prepare score card email for {level}.")
 
-                            assessment_data[level] = {
-                                "courses": courses,
-                                "level_status": status,
-                                "manager_referral": manager_referral if level == "LEVEL #3" else "",
-                                "reminder": reminder,
-                                "score_status": score_status
-                            }
-                        else:
-                            st.warning(f"{level} is locked. Complete previous level(s) first.")
+                    reminder = st.text_area("Reminder", key=f"reminder_{level}_{trainer_id}")
+                    reminder_email = st.text_input(
+                        "Evaluator Email for Reminder", key=f"reminder_email_{level}_{trainer_id}"
+                    )
+                    if reminder_email:
+                        email_client = st.selectbox("Choose Email Client", ["Default", "Gmail", "Outlook"], key=f"email_client_{level}_{trainer_id}")
+                        if st.button("SEND EMAIL", key=f"send_email_{level}_{trainer_id}"):
+                            try:
+                                if not reminder_email or '@' not in reminder_email:
+                                    st.error("No valid recipient email found.")
+                                else:
+                                    email_body = f"Reminder for Trainer ID: {trainer_id}\n"
+                                    email_body += f"Trainer Name: {trainer_name}\n"
+                                    email_body += f"Department: {department}\n"
+                                    email_body += f"Date of Assessment: {datetime.today().date()}\n"
+                                    email_body += f"Evaluator: {evaluator_username} ({evaluator_role})\n"
+                                    email_body += f"\nReminder Message:\n{reminder or 'No reminder message provided.'}\n"
+                                    email_body += f"\nAssessment Overview for {level}:\n"
+                                    for i in range(1, 11):
+                                        course_key = f"{level} Course :{i}"
+                                        course_data = courses.get(course_key, {})
+                                        course_name = course_data.get("name", "N/A")
+                                        course_passed = course_data.get("passed", False)
+                                        email_body += f"  Course :{i}: {course_name} ({'Passed' if course_passed else 'Not Passed'})\n"
+                                    if level == "LEVEL #3":
+                                        email_body += f"\nManager Referral: {manager_referral or 'N/A'}\n"
+                                    email_subject = f"Reminder for Trainer {trainer_id} - {level} - {datetime.today().date()}"
+                                    if email_client == "Default":
+                                        link = f"mailto:{urllib.parse.quote(reminder_email)}?subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                    elif email_client == "Gmail":
+                                        link = f"https://mail.google.com/mail?view=cm&fs=1&to={urllib.parse.quote(reminder_email)}&su={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                    elif email_client == "Outlook":
+                                        link = f"https://outlook.live.com/mail/0/deeplink/compose?to={urllib.parse.quote(reminder_email)}&subject={urllib.parse.quote(email_subject)}&body={urllib.parse.quote(email_body)}"
+                                    st.markdown(f'<a href="{link}" target="_blank">Open in {email_client}</a>', unsafe_allow_html=True)
+                                    st.success(f"Reminder email prepared for {reminder_email} in {email_client}.")
+                            except Exception as e:
+                                logger.error(f"Error preparing reminder email for {level}: {str(e)}")
+                                st.error(f"Failed to prepare reminder email for {level}.")
+
+                    if level_status.get(level) != "QUALIFIED" or submissions.get(f"{level}_submissions", 0) < 2:
+                        send_report_enabled = status == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2 and all_courses_filled
+                        score_status = st.selectbox(
+                            "Status of Score Card",
+                            ["Score Cards has not been sent"] if not send_report_enabled else ["Score Cards has been sent", "Score Cards has not been sent"],
+                            key=f"score_status_{level}_{trainer_id}",
+                            help="Select the status of the score card."
+                        )
+                        send_score_card_disabled = score_status != "Score Cards has not been sent"
+                        if st.button("SEND SCORE CARD", disabled=send_score_card_disabled, key=f"send_score_card_{level}_{trainer_id}"):
+                            try:
+                                if not trainer_email or '@' not in trainer_email:
+                                    st.error("No valid trainer email found.")
+                                else:
+                                    # Placeholder for sending score card email
+                                    pass
+                            except Exception as e:
+                                logger.error(f"Error sending score card for {level}: {str(e)}")
+                                st.error(f"Failed to send score card for {level}.")
                 except Exception as e:
                     logger.error(f"Error in {level} assessment: {str(e)}")
                     st.error(f"Failed to process {level} assessment.")
@@ -535,55 +611,50 @@ def evaluator_section(df_main):
         if st.button("💾 Submit Evaluation", key="submit_evaluation"):
             try:
                 if not trainer_id:
-                    st.error("❌ Trainer ID is required.")
-                    return
+                    if mode == "New Trainer Creation ID" and trainer_name and department and trainer_email:
+                        trainer_id = generate_new_trainer_id()
+                    else:
+                        st.error("❌ Trainer ID is required.")
+                        return
 
                 entry = {
                     "Trainer ID": trainer_id,
-                    "Trainer Name": trainer_name or "New",
-                    "Department": department or "",
-                    "DOJ": datetime.today().date(),
-                    "Branch": "", "Discipline": "", "Course": "",
-                    "Date of assessment": datetime.today().date(),
+                    "Trainer Name": trainer_name,
+                    "Department": department,
+                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
                     "Evaluator Username": evaluator_username,
-                    "Evaluator Role": evaluator_role,
+                    "Evaluator Role": evaluator_role
                 }
 
                 for level in levels:
-                    if level_status.get(level) != "QUALIFIED" or submissions.get(f"{level}_submissions", 0) < 2:
-                        data = assessment_data.get(level, {})
-                        for i in range(1, 11):
-                            course_key = f"{level} Course :{i}"
-                            course_data = data.get("courses", {}).get(course_key, {})
-                            entry[course_key] = course_data.get("name", "")
-                            for param in relevant_params[evaluator_role]:
-                                entry[f"{param} Course :{i}"] = course_data.get("params", {}).get(param, "")
-                            entry[f"{course_key} TOTAL"] = course_data.get("total", 0)
-                            entry[f"{course_key} AVERAGE"] = course_data.get("average", 0.0)
-                            entry[f"{course_key} STATUS"] = course_data.get("status_overall", "REDO")
-                        entry[f"{level} TOTAL"] = sum(data.get("courses", {}).get(f"{level} Course :{i}", {}).get("total", 0) for i in range(1, 11))
-                        entry[f"{level} AVERAGE"] = sum(data.get("courses", {}).get(f"{level} Course :{i}", {}).get("average", 0.0) for i in range(1, 11)) / 10
-                        entry[f"{level} STATUS"] = data.get("status_overall", "REDO")
-                        entry[f"{level} Reminder"] = data.get("reminder", "")
-                        entry[f"{level} Score Card Status"] = data.get("score_status", "Score Cards has not been sent")
-                        entry[level] = data.get("level_status", "NOT QUALIFIED")
-                        if level == "LEVEL #3" and data.get("manager_referral"):
-                            entry["Manager Referral"] = data["manager_referral"]
-                        break
+                    entry[level] = status if level in ["LEVEL #1", "LEVEL #2"] else "NOT QUALIFIED"
+                    entry[f"{level} Reminder"] = reminder
+                    entry[f"{level} Score Card Status"] = score_status
+                    if level == "LEVEL #3":
+                        entry["Manager Referral"] = manager_referral
 
-                # Enforce Qualification Criteria
+                    total_score = 0
+                    param_count = len(relevant_params[evaluator_role])
+                    for i in range(1, 11):
+                        course_key = f"{level} Course :{i}"
+                        course_data = courses.get(course_key, {})
+                        entry[course_key] = course_data.get("name", "")
+                        entry[f"{course_key} TOTAL"] = course_data.get("total", 0)
+                        entry[f"{course_key} AVERAGE"] = course_data.get("average", 0.0)
+                        entry[f"{course_key} STATUS"] = course_data.get("status_overall", "REDO")
+                        entry[f"{course_key} Remarks"] = course_data.get("remarks", "")
+                        for param in relevant_params[evaluator_role]:
+                            entry[f"{param} Course :{i}"] = course_data.get("params", {}).get(param, 0)
+                        total_score += course_data.get("total", 0)
+                    entry[f"{level} TOTAL"] = total_score
+                    entry[f"{level} AVERAGE"] = total_score / (param_count * 10) if param_count * 10 > 0 else 0.0
+
                 for level in levels:
-                    data = assessment_data.get(level, {})
-                    courses = data.get("courses", {})
                     all_courses_filled = all(courses.get(f"{level} Course :{i}", {}).get("name") and courses.get(f"{level} Course :{i}", {}).get("passed") for i in range(1, 11))
-                    if level == "LEVEL #1" and entry.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
+                    if level in ["LEVEL #1", "LEVEL #2"] and entry.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
                         if not all_courses_filled or entry.get(f"{level} AVERAGE", 0.0) < 75.0:
                             entry[level] = "NOT QUALIFIED"
                             st.warning(f"{level} requires 10 completed courses with at least 75% average.")
-                    if level == "LEVEL #2" and entry.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
-                        if not all_courses_filled or entry.get(f"{level} AVERAGE", 0.0) < 80.0:
-                            entry[level] = "NOT QUALIFIED"
-                            st.warning(f"{level} requires 10 completed courses with at least 80% average.")
                     if level == "LEVEL #3" and entry.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) >= 2:
                         if not all_courses_filled or entry.get(f"{level} AVERAGE", 0.0) < 90.0 or not entry.get("Manager Referral"):
                             entry[level] = "NOT QUALIFIED"
@@ -591,9 +662,15 @@ def evaluator_section(df_main):
 
                 updated_df = pd.concat([df_main, pd.DataFrame([entry])], ignore_index=True)
                 updated_df.to_csv(CSV_FILE, index=False)
+
                 st.success(f"✅ Assessment Saved for Trainer ID: {trainer_id}")
 
-                # Add download options for submitted assessment
+                df_updated = load_data()
+                past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
+                if not past_assessments_updated.empty:
+                    st.markdown("### 🔁 Updated Previous Assessments")
+                    st.dataframe(past_assessments_updated, use_container_width=True)
+
                 st.markdown("### 📥 Download Submitted Assessment")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -613,58 +690,50 @@ def evaluator_section(df_main):
                         y = 750
                         pdf.drawString(100, y, f"Trainer Assessment Report")
                         y -= 20
-                        pdf.drawString(100, y, f"Generated on: {datetime.now().strftime('%d-%m-%Y %I:%M %p IST')}")
+                        pdf.drawString(100, y, f"Trainer ID: {trainer_id}")
                         y -= 20
-                        pdf.drawString(100, y, f"Trainer: {trainer_name} (ID: {trainer_id})")
+                        pdf.drawString(100, y, f"Trainer Name: {trainer_name}")
                         y -= 20
-                        pdf.drawString(100, y, f"Evaluator: {evaluator_username} ({evaluator_role})")
+                        pdf.drawString(100, y, f"Department: {department}")
+                        y -= 20
+                        pdf.drawString(100, y, f"Date: {datetime.today().date()}")
                         y -= 30
-                        pdf.drawString(100, y, "Assessment Summary")
-                        y -= 20
-                        pdf.drawString(100, y, f"Date of Assessment: {entry['Date of assessment']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 TOTAL: {entry.get('LEVEL #1 TOTAL', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 AVERAGE: {entry.get('LEVEL #1 AVERAGE', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 STATUS: {entry.get('LEVEL #1 STATUS', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 TOTAL: {entry.get('LEVEL #2 TOTAL', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 AVERAGE: {entry.get('LEVEL #2 AVERAGE', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 STATUS: {entry.get('LEVEL #2 STATUS', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 TOTAL: {entry.get('LEVEL #3 TOTAL', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 AVERAGE: {entry.get('LEVEL #3 AVERAGE', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 STATUS: {entry.get('LEVEL #3 STATUS', 'N/A')}")
-                        y -= 20
-                        pdf.drawString(100, y, f"Manager Referral: {entry.get('Manager Referral', 'N/A')}")
-                        y -= 30
-                        for level in ["LEVEL #1", "LEVEL #2", "LEVEL #3"]:
-                            pdf.drawString(100, y, f"{level} Courses")
+                        for level in levels:
+                            pdf.drawString(100, y, f"{level} Assessment")
                             y -= 20
+                            pdf.drawString(100, y, f"Status: {entry.get(level, 'N/A')}")
+                            y -= 20
+                            pdf.drawString(100, y, f"Total: {entry.get(f'{level} TOTAL', 'N/A')}")
+                            y -= 20
+                            pdf.drawString(100, y, f"Average: {entry.get(f'{level} AVERAGE', 'N/A'):.2f}")
+                            y -= 20
+                            pdf.drawString(100, y, f"Reminder: {entry.get(f'{level} Reminder', 'N/A')}")
+                            y -= 20
+                            if level == "LEVEL #3":
+                                pdf.drawString(100, y, f"Manager Referral: {entry.get('Manager Referral', 'N/A')}")
+                                y -= 20
                             for i in range(1, 11):
-                                course = entry.get(f"{level} Course :{i}", "N/A")
-                                pdf.drawString(100, y, f"Course :{i}: {course}")
+                                pdf.drawString(100, y, f"Course :{i}: {entry.get(f'{level} Course :{i}', 'N/A')}")
                                 y -= 20
                                 for param in relevant_params[evaluator_role]:
-                                    param_value = entry.get(f"{param} Course :{i}", "N/A")
-                                    pdf.drawString(100, y, f"  {param}: {param_value}")
+                                    pdf.drawString(120, y, f"{param}: {entry.get(f'{param} Course :{i}', 'N/A')}")
                                     y -= 20
-                                pdf.drawString(100, y, f"  TOTAL: {entry.get(f'{level} Course :{i} TOTAL', 'N/A')}")
+                                pdf.drawString(120, y, f"TOTAL: {entry.get(f'{level} Course :{i} TOTAL', 'N/A')}")
                                 y -= 20
-                                pdf.drawString(100, y, f"  AVERAGE: {entry.get(f'{level} Course :{i} AVERAGE', 'N/A')}")
+                                pdf.drawString(120, y, f"AVERAGE: {entry.get(f'{level} Course :{i} AVERAGE', 'N/A'):.2f}")
                                 y -= 20
-                                pdf.drawString(100, y, f"  STATUS: {entry.get(f'{level} Course :{i} STATUS', 'N/A')}")
+                                pdf.drawString(120, y, f"STATUS: {entry.get(f'{level} Course :{i} STATUS', 'N/A')}")
+                                y -= 20
+                                pdf.drawString(120, y, f"Remarks: {entry.get(f'{level} Course :{i} Remarks', 'N/A')}")
                                 y -= 20
                                 if y < 50:
                                     pdf.showPage()
                                     pdf.setFont("Helvetica", 12)
                                     y = 750
-                        pdf.showPage()
+                            if y < 50:
+                                pdf.showPage()
+                                pdf.setFont("Helvetica", 12)
+                                y = 750
                         pdf.save()
                         pdf_data = buffer.getvalue()
                         buffer.close()
@@ -682,6 +751,18 @@ def evaluator_section(df_main):
                 logger.error(f"Error submitting evaluation: {str(e)}")
                 st.error("Failed to submit evaluation. Please try again.")
 
+        if st.button("View All Trainers", key="view_all_trainers"):
+            try:
+                if os.path.exists(DEFAULT_DATA_FILE):
+                    all_trainers = pd.read_csv(DEFAULT_DATA_FILE)[["Trainer ID", "Trainer Name", "Department", "Branch"]].drop_duplicates()
+                    st.markdown("### 🆔 All Trainers")
+                    st.dataframe(all_trainers, use_container_width=True)
+                else:
+                    st.error("EVALUATOR_INPUT.csv not found.")
+            except Exception as e:
+                logger.error(f"Error viewing all trainers: {str(e)}")
+                st.error("Failed to display trainer list.")
+
         if st.button("Logout", key="evaluator_logout"):
             try:
                 for key in ["logged_in", "role", "logged_user"]:
@@ -698,71 +779,53 @@ def evaluator_section(df_main):
 
 def viewer_section(df_main):
     try:
-        st.subheader("📊 Viewer Dashboard")
-
+        st.subheader("👀 Viewer Dashboard")
         if "logged_in" not in st.session_state or not st.session_state.get("logged_in"):
-            st.warning("Please login to access the viewer dashboard.")
-            return
-
-        st.markdown("### 🔍 Filter Assessments")
-        branch = st.selectbox("Select Branch", options=["", "Lokhandwala", "Juhu", "Laxmi", "Malad", "Pune", "Bangalore", "Nagpur"], key="viewer_branch")
-        department = st.selectbox("Select Department", options=["", "Coding", "Mechanical", "Design Thinking", "Electronics", "AI & Analytics"], key="viewer_department")
-        search_term = st.text_input("Search by Trainer Name or ID", key="viewer_search", help="Enter a name or ID to filter trainers.")
-
-        if os.path.exists(DEFAULT_DATA_FILE):
-            try:
-                eval_inputs_df = pd.read_csv(DEFAULT_DATA_FILE).fillna("")
-                if "Trainer ID" not in eval_inputs_df.columns or "Trainer Name" not in eval_inputs_df.columns or "Branch" not in eval_inputs_df.columns or "Department" not in eval_inputs_df.columns:
-                    st.error("❌ Required columns missing in EVALUATOR_INPUT.csv.")
-                    return
-                filtered_trainers = eval_inputs_df.copy()
-                if branch:
-                    filtered_trainers = filtered_trainers[filtered_trainers["Branch"] == branch]
-                if department:
-                    filtered_trainers = filtered_trainers[filtered_trainers["Department"] == department]
-                if search_term:
-                    filtered_trainers = filtered_trainers[
-                        filtered_trainers["Trainer Name"].str.contains(search_term, case=False, na=False) |
-                        filtered_trainers["Trainer ID"].str.contains(search_term, case=False, na=False)
-                    ]
-                if filtered_trainers.empty:
-                    st.warning("No trainers match the selected filters.")
-                    trainer_name = ""
-                else:
-                    trainer_name = st.selectbox("Select Trainer Name", options=[""] + sorted(filtered_trainers["Trainer Name"].unique().tolist()), key="viewer_trainer")
-            except Exception as e:
-                logger.error(f"Error filtering trainers: {str(e)}")
-                st.error("Failed to load trainer data.")
-                return
-        else:
-            st.error("EVALUATOR_INPUT.csv not found.")
+            st.warning("Please login to access the viewer panel.")
             return
 
         df = df_main.copy()
-        if trainer_name and os.path.exists(CSV_FILE):
-            try:
-                trainer_id = eval_inputs_df[eval_inputs_df["Trainer Name"] == trainer_name]["Trainer ID"].iloc[0]
-                trainer_report = df[df["Trainer ID"] == trainer_id]
-                if not trainer_report.empty:
-                    st.markdown("### 📋 Assessment Records")
-                    st.dataframe(trainer_report, use_container_width=True)
-                    st.markdown(f"**Trainer ID:** {trainer_id} | **Name:** {trainer_name} | **Department:** {department or 'N/A'} | **Branch:** {branch or 'N/A'}")
-                else:
-                    st.warning("No assessment records found for the selected trainer.")
-            except Exception as e:
-                logger.error(f"Error loading trainer report: {str(e)}")
-                st.error("Failed to load assessment records.")
+        if "Trainer ID" not in df.columns:
+            st.error("❌ 'Trainer ID' column missing in data.")
+            return
 
-        if trainer_name and not trainer_report.empty:
+        st.markdown("### 📋 Trainer Assessments")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            trainer_filter = st.text_input("Filter by Trainer Name or ID", "")
+        with col2:
+            display_trainers = st.button("Display Matching Trainers")
+
+        filtered = df.copy()
+        if trainer_filter:
+            try:
+                mask = filtered["Trainer ID"].astype(str).str.contains(trainer_filter, case=False, na=False) | \
+                       filtered["Trainer Name"].astype(str).str.contains(trainer_filter, case=False, na=False)
+                filtered = filtered[mask]
+            except Exception as e:
+                logger.error(f"Error filtering trainers: {str(e)}")
+                st.error("Failed to apply trainer filter.")
+
+        if display_trainers and not filtered.empty:
+            st.markdown("#### Matching Trainer Assessments")
+            st.dataframe(filtered)
+
+        trainer_ids = sorted(filtered["Trainer ID"].dropna().unique().tolist())
+        selected_trainer = st.selectbox("Select Trainer for Detailed Report", [""] + trainer_ids)
+        if selected_trainer:
+            trainer_report = df[df["Trainer ID"] == selected_trainer]
+            st.markdown(f"##### Reports for Trainer ID: {selected_trainer}")
+            st.dataframe(trainer_report)
+
             col1, col2 = st.columns(2)
             with col1:
                 csv_data = trainer_report.to_csv(index=False)
                 st.download_button(
-                    label="Download Trainer CSV",
+                    label="Download Trainer Report CSV",
                     data=csv_data,
-                    file_name=f"trainer_{trainer_id}_assessment.csv",
+                    file_name=f"trainer_{selected_trainer}_reports.csv",
                     mime="text/csv",
-                    key=f"download_button_csv_{trainer_id}"
+                    key=f"download_button_trainer_csv_{selected_trainer}"
                 )
             with col2:
                 try:
@@ -770,43 +833,12 @@ def viewer_section(df_main):
                     pdf = canvas.Canvas(buffer, pagesize=A4)
                     pdf.setFont("Helvetica", 12)
                     y = 750
-                    pdf.drawString(100, y, f"Trainer Assessment Report")
+                    pdf.drawString(100, y, f"Trainer Report: {selected_trainer}")
                     y -= 20
                     pdf.drawString(100, y, f"Generated on: {datetime.now().strftime('%d-%m-%Y %I:%M %p IST')}")
-                    y -= 20
-                    pdf.drawString(100, y, f"Trainer: {trainer_name} (ID: {trainer_id})")
                     y -= 30
-                    pdf.drawString(100, y, "Assessment Records")
-                    y -= 20
-                    for _, row in trainer_report.iterrows():
-                        pdf.drawString(100, y, f"Date of Assessment: {row['Date of assessment']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 TOTAL: {row['LEVEL #1 TOTAL']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 AVERAGE: {row['LEVEL #1 AVERAGE']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #1 STATUS: {row['LEVEL #1 STATUS']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 TOTAL: {row['LEVEL #2 TOTAL']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 AVERAGE: {row['LEVEL #2 AVERAGE']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #2 STATUS: {row['LEVEL #2 STATUS']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 TOTAL: {row['LEVEL #3 TOTAL']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 AVERAGE: {row['LEVEL #3 AVERAGE']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"LEVEL #3 STATUS: {row['LEVEL #3 STATUS']}")
-                        y -= 20
-                        pdf.drawString(100, y, f"Manager Referral: {row.get('Manager Referral', 'N/A')}")
-                        y -= 30
-                        if y < 50:
-                            pdf.showPage()
-                            pdf.setFont("Helvetica", 12)
-                            y = 750
                     for level in ["LEVEL #1", "LEVEL #2", "LEVEL #3"]:
-                        pdf.drawString(100, y, f"{level} Courses")
+                        pdf.drawString(100, y, f"{level} Assessment")
                         y -= 20
                         for i in range(1, 11):
                             course = trainer_report.iloc[-1].get(f"{level} Course :{i}", "N/A")
@@ -823,9 +855,9 @@ def viewer_section(df_main):
                     st.download_button(
                         label="Download Trainer PDF",
                         data=pdf_data,
-                        file_name=f"trainer_{trainer_id}_assessment.pdf",
+                        file_name=f"trainer_{selected_trainer}_assessment.pdf",
                         mime="application/pdf",
-                        key=f"download_button_pdf_{trainer_id}"
+                        key=f"download_button_pdf_{selected_trainer}"
                     )
                 except Exception as e:
                     logger.error(f"Error generating PDF: {str(e)}")
@@ -834,7 +866,7 @@ def viewer_section(df_main):
         if st.button("View All Trainers", key="view_all_trainers"):
             try:
                 if os.path.exists(DEFAULT_DATA_FILE):
-                    all_trainers = eval_inputs_df[["Trainer ID", "Trainer Name", "Department", "Branch"]].drop_duplicates()
+                    all_trainers = pd.read_csv(DEFAULT_DATA_FILE)[["Trainer ID", "Trainer Name", "Department", "Branch"]].drop_duplicates()
                     st.markdown("### 🆔 All Trainers")
                     st.dataframe(all_trainers, use_container_width=True)
                 else:
@@ -865,7 +897,6 @@ def admin_section(df_main):
             st.warning("Please login to access the admin panel.")
             return
 
-        # Display list of existing evaluators at the top
         evaluators_df = load_evaluators()
         st.markdown("### 🧑‍💻 Existing Evaluators")
         try:
@@ -1126,7 +1157,7 @@ def set_background(image_file):
         st.markdown(page_bg_img, unsafe_allow_html=True)
     except Exception as e:
         logger.error(f"Error setting background: {str(e)}")
-        st.warning("Failed to set background image.")
+        st.error("Failed to set background image.")
 
 def login_ui():
     try:
