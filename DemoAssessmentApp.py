@@ -261,7 +261,8 @@ def evaluator_section(df_main):
         mode = st.radio("Select Trainer ID Mode", ["Enter Existing Trainer ID", "New Trainer Creation ID"])
         trainer_id, trainer_name, department, trainer_email = "", "", "", ""
 
-        # Existing Trainer ID
+        # Enhancement 1: By default shows first record "Priyas's name" when logged in, Enhance to not show this in default
+        # Solution: Set index=None in selectbox to start with no selection
         if mode.startswith("Enter"):
             try:
                 if os.path.exists(DEFAULT_DATA_FILE):
@@ -269,17 +270,15 @@ def evaluator_section(df_main):
                     if "Trainer ID" not in eval_inputs_df.columns:
                         st.error("❌ 'Trainer ID' column missing in EVALUATOR_INPUT.csv.")
                         return
-                    available_ids = eval_inputs_df["Trainer ID"].dropna().unique().tolist()
-                    if not available_ids:
-                        st.warning("No Trainer IDs found in EVALUATOR_INPUT.csv.")
-                        return
-                    selected_id = st.selectbox("Select Existing Trainer ID", available_ids)
-                    trainer_data = eval_inputs_df[eval_inputs_df["Trainer ID"] == selected_id].iloc[0].to_dict()
-                    trainer_id = trainer_data.get("Trainer ID", "")
-                    trainer_name = trainer_data.get("Trainer Name", "")
-                    department = trainer_data.get("Department", "")
-                    trainer_email = trainer_data.get("Email", "")
-                    st.success(f"Loaded Trainer ID: {trainer_id}")
+                    available_ids = [""] + eval_inputs_df["Trainer ID"].dropna().unique().tolist()  # Add empty option
+                    selected_id = st.selectbox("Select Existing Trainer ID", available_ids, index=0)  # Default to empty
+                    if selected_id:
+                        trainer_data = eval_inputs_df[eval_inputs_df["Trainer ID"] == selected_id].iloc[0].to_dict()
+                        trainer_id = trainer_data.get("Trainer ID", "")
+                        trainer_name = trainer_data.get("Trainer Name", "")
+                        department = trainer_data.get("Department", "")
+                        trainer_email = trainer_data.get("Email", "")
+                        st.success(f"Loaded Trainer ID: {trainer_id}")
                 else:
                     st.error("EVALUATOR_INPUT.csv not found.")
                     return
@@ -329,6 +328,13 @@ def evaluator_section(df_main):
             logger.error(f"Error processing level statuses: {str(e)}")
             st.error("Failed to process assessment levels.")
 
+        # Enhancement 10: Update to make Level 2 should be unlocked automatically once all the assessments for 10 courses been marked as qualified in Level 1 and not with the current option where have to mark manually
+        # Enhancement 11: Resolve this error + Once level 1 is completed with all Course 1 to Course 10 status as QUALIFIED, automatically option to for level 2 assessments should be enabled without any manual option
+        # Enhancement 12: Resolve this error + Once level 2 is completed with all Course 1 to Course 10 status as QUALIFIED, automatically option to for level 3 assessments should be enabled without any manual option
+        # Solution: Check if all 10 courses in previous level are qualified based on past_assessments
+        level_1_qualified = all(past_assessments.get(f"LEVEL #1 Course :{i} STATUS", "") == "QUALIFIED" for i in range(1, 11)) if not past_assessments.empty else False
+        level_2_qualified = all(past_assessments.get(f"LEVEL #2 Course :{i} STATUS", "") == "QUALIFIED" for i in range(1, 11)) if not past_assessments.empty else False
+
         for level in levels:
             level_class = f"level-{level.split('#')[1]}-heading"
             st.markdown(f'<div class="{level_class}">🔹 {level} Assessment</div>', unsafe_allow_html=True)
@@ -345,9 +351,12 @@ def evaluator_section(df_main):
                     elif level_status.get(level) == "QUALIFIED" and submissions.get(f"{level}_submissions", 0) == 1:
                         st.write(f"{level} qualified by one evaluator. Awaiting second evaluation.")
                     else:
-                        if level == "LEVEL #1" or \
-                           (level == "LEVEL #2" and level_status.get("LEVEL #1") == "QUALIFIED") or \
-                           (level == "LEVEL #3" and level_status.get("LEVEL #2") == "QUALIFIED"):
+                        eligible = (
+                            level == "LEVEL #1" or
+                            (level == "LEVEL #2" and level_1_qualified) or
+                            (level == "LEVEL #3" and level_2_qualified)
+                        )
+                        if eligible:
                             st.markdown(f"### {level} Courses")
                             tabs = st.tabs([f"Course :{i}" for i in range(1, 11)])
                             all_courses_filled = True
@@ -396,6 +405,13 @@ def evaluator_section(df_main):
                                             "Well Modulated Voice (5)": param_voice
                                         }
 
+                                    # Enhancement 9: When one assessment is marked as "Redo", ensure to display where are the attempts added
+                                    # Solution: Track attempts in session state or CSV column
+                                    if f"attempt_{level}_{i}_{trainer_id}" not in st.session_state:
+                                        st.session_state[f"attempt_{level}_{i}_{trainer_id}"] = 1
+                                    attempt = st.session_state[f"attempt_{level}_{i}_{trainer_id}"]
+                                    st.info(f"Attempt: {attempt}")
+
                                     remarks = st.text_area("Remarks", key=f"remarks_{level}_{i}_{trainer_id}")
 
                                     if evaluator_role == "Technical Evaluator":
@@ -418,7 +434,7 @@ def evaluator_section(df_main):
                                                     "Trainer ID": trainer_id,
                                                     "Trainer Name": trainer_name,
                                                     "Department": department,
-                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
+                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%Y"),
                                                     "Evaluator Username": evaluator_username,
                                                     "Evaluator Role": evaluator_role,
                                                     f"{course_key}": course_select,
@@ -439,12 +455,10 @@ def evaluator_section(df_main):
                                                     updated_df = pd.concat([updated_df, pd.DataFrame([course_entry])], ignore_index=True)
                                                 updated_df.to_csv(CSV_FILE, index=False)
 
-                                                # Reload and display updated previous assessments
-                                                df_updated = load_data()
-                                                past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
-                                                if not past_assessments_updated.empty:
-                                                    st.markdown("### 🔁 Updated Previous Assessments")
-                                                    st.dataframe(past_assessments_updated, use_container_width=True)
+                                                # Enhancement 2: Once added scores in one assessment and calculated, does not reflect in other sections
+                                                # Solution: Rerun the app to refresh displays
+                                                st.rerun()
+
                                             except Exception as e:
                                                 logger.error(f"Error updating data on Calculate Score: {str(e)}")
                                                 st.error("Failed to update assessment data.")
@@ -468,7 +482,7 @@ def evaluator_section(df_main):
                                                     "Trainer ID": trainer_id,
                                                     "Trainer Name": trainer_name,
                                                     "Department": department,
-                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
+                                                    "Date of assessment": datetime.today().date().strftime("%Y-%m-%Y"),
                                                     "Evaluator Username": evaluator_username,
                                                     "Evaluator Role": evaluator_role,
                                                     f"{course_key}": course_select,
@@ -489,12 +503,9 @@ def evaluator_section(df_main):
                                                     updated_df = pd.concat([updated_df, pd.DataFrame([course_entry])], ignore_index=True)
                                                 updated_df.to_csv(CSV_FILE, index=False)
 
-                                                # Reload and display updated previous assessments
-                                                df_updated = load_data()
-                                                past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
-                                                if not past_assessments_updated.empty:
-                                                    st.markdown("### 🔁 Updated Previous Assessments")
-                                                    st.dataframe(past_assessments_updated, use_container_width=True)
+                                                # Enhancement 2: Refresh
+                                                st.rerun()
+
                                             except Exception as e:
                                                 logger.error(f"Error updating data on Calculate Score: {str(e)}")
                                                 st.error("Failed to update assessment data.")
@@ -502,6 +513,8 @@ def evaluator_section(df_main):
                                     calculated_total = st.session_state.get(f"total_{level}_{i}_{trainer_id}", 0)
                                     calculated_avg = st.session_state.get(f"avg_{level}_{i}_{trainer_id}", 0.0)
                                     status_overall = st.selectbox(f"Course :{i} STATUS", ["CLEARED", "REDO"], key=f"status_{level}_{i}_{trainer_id}")
+                                    if status_overall == "REDO":
+                                        st.session_state[f"attempt_{level}_{i}_{trainer_id}"] += 1  # Increment attempt on REDO
                                     course_passed = st.checkbox(f"{course_key} Passed", key=f"course_pass_{level}_{i}_{trainer_id}")
 
                                     final_course = course_name if course_name else course_select
@@ -546,8 +559,81 @@ def evaluator_section(df_main):
                                     key=f"manager_referral_{level}_{trainer_id}"
                                 )
 
+                            # Enhancement 7: Add button option to Save Assessment in DB to save the assessment data entered in the appropriate CSV file under the appropriate Trainer ID row.
+                            # Solution: Add Save button to compile and save course data without full submission
+                            if st.button("Save Assessment in DB", key=f"save_{level}_{trainer_id}"):
+                                try:
+                                    entry = {
+                                        "Trainer ID": trainer_id,
+                                        "Trainer Name": trainer_name,
+                                        "Department": department,
+                                        "Date of assessment": datetime.today().date().strftime("%Y-%m-%Y"),
+                                        "Evaluator Username": evaluator_username,
+                                        "Evaluator Role": evaluator_role
+                                    }
+                                    for i in range(1, 11):
+                                        course_key = f"{level} Course :{i}"
+                                        course_data = courses.get(course_key, {})
+                                        entry[course_key] = course_data.get("name", "")
+                                        entry[f"{course_key} TOTAL"] = course_data.get("total", 0)
+                                        entry[f"{course_key} AVERAGE"] = course_data.get("average", 0.0)
+                                        entry[f"{course_key} STATUS"] = course_data.get("status_overall", "REDO")
+                                        entry[f"{course_key} Remarks"] = course_data.get("remarks", "")
+                                        for param in relevant_params[evaluator_role]:
+                                            entry[f"{param} Course :{i}"] = course_data.get("params", {}).get(param, 0)
+
+                                    updated_df = df.copy()
+                                    if trainer_id in updated_df["Trainer ID"].values:
+                                        idx = updated_df.index[updated_df["Trainer ID"] == trainer_id].tolist()[-1]
+                                        for key, value in entry.items():
+                                            updated_df.at[idx, key] = value
+                                    else:
+                                        updated_df = pd.concat([updated_df, pd.DataFrame([entry])], ignore_index=True)
+                                    updated_df.to_csv(CSV_FILE, index=False)
+                                    st.success("Assessment saved to DB.")
+                                    st.rerun()
+                                except Exception as e:
+                                    logger.error(f"Error saving assessment: {str(e)}")
+                                    st.error("Failed to save assessment.")
+
+                            # Enhancement 8: For course 2 assessment, ensure to keep the same reminder added for course 1 assessment with the same functionality as Course 1
+                            # Solution: Reminder is per level, so it's already shared across courses in the level
+
                             reminder = st.text_area("Reminder", key=f"reminder_{level}_{trainer_id}")
                             reminder_email = st.text_input("Reminder Email", key=f"reminder_email_{level}_{trainer_id}")
+
+                            # Enhancement 3: Error when clicked on "Reminder email prepared for"
+                            # Solution: Add button to prepare reminder email, handle errors
+                            if st.button("Prepare Reminder Email", key=f"prepare_reminder_{level}_{trainer_id}"):
+                                try:
+                                    if reminder_email:
+                                        st.session_state[f"prepared_email_{level}_{trainer_id}"] = reminder_email
+                                        st.success(f"Reminder email prepared for {reminder_email}")
+                                    else:
+                                        st.warning("Enter a reminder email first.")
+                                except Exception as e:
+                                    logger.error(f"Error preparing reminder email: {str(e)}")
+                                    st.error("Failed to prepare reminder email.")
+
+                            # Enhancement 4: Error as Does not send email when clicked on [SEND EMAIL]
+                            # Enhancement 5: Change from “Open in Gmail” to “Open to send mail”
+                            # Enhancement 6: Remove Unnecessary data in mail: Keep only default data so evaluator can add email contents
+                            # Solution: Add Send Email button, use smtplib to send, minimal body
+                            if st.button("Open to send mail", key=f"open_mail_{level}_{trainer_id}"):
+                                try:
+                                    msg = EmailMessage()
+                                    msg['Subject'] = f"Reminder for {level}"
+                                    msg['From'] = 'your_email@example.com'  # Replace with actual
+                                    msg['To'] = reminder_email
+                                    msg.set_content(reminder)  # Only reminder text, no unnecessary data
+
+                                    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:  # Example for Gmail
+                                        smtp.login('your_email@example.com', 'your_password')  # Use secrets
+                                        smtp.send_message(msg)
+                                    st.success("Email sent successfully!")
+                                except Exception as e:
+                                    logger.error(f"Error sending email: {str(e)}")
+                                    st.error("Failed to send email.")
 
                             if st.button("Submit Evaluation", key=f"submit_{level}_{trainer_id}"):
                                 try:
@@ -555,7 +641,7 @@ def evaluator_section(df_main):
                                         "Trainer ID": trainer_id,
                                         "Trainer Name": trainer_name,
                                         "Department": department,
-                                        "Date of assessment": datetime.today().date().strftime("%Y-%m-%d"),
+                                        "Date of assessment": datetime.today().date().strftime("%Y-%m-%Y"),
                                         "Evaluator Username": evaluator_username,
                                         "Evaluator Role": evaluator_role,
                                         f"{level}": status,
@@ -595,11 +681,9 @@ def evaluator_section(df_main):
 
                                     st.success(f"✅ Assessment Saved for Trainer ID: {trainer_id}")
 
-                                    df_updated = load_data()
-                                    past_assessments_updated = df_updated[df_updated["Trainer ID"] == trainer_id]
-                                    if not past_assessments_updated.empty:
-                                        st.markdown("### 🔁 Updated Previous Assessments")
-                                        st.dataframe(past_assessments_updated, use_container_width=True)
+                                    # Enhancement 13: Resolve this error + “Tried adding all 3 courses assessment, submitted the evaluation, nowhere the scores were updated, not in evaluator page nor in viewer section”
+                                    # Solution: Rerun after submit to refresh all sections
+                                    st.rerun()
 
                                     st.markdown("### 📥 Download Submitted Assessment")
                                     col1, col2 = st.columns(2)
@@ -708,7 +792,7 @@ def evaluator_section(df_main):
     except Exception as e:
         logger.error(f"Error in evaluator section: {str(e)}")
         st.error("An unexpected error occurred in the Evaluator Dashboard.")
-
+        
 def viewer_section(df_main):
     try:
         st.subheader("👀 Viewer Dashboard")
