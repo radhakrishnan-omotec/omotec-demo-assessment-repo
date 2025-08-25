@@ -793,6 +793,7 @@ def evaluator_section(df_main):
         logger.error(f"Error in evaluator section: {str(e)}")
         st.error("An unexpected error occurred in the Evaluator Dashboard.")
         
+        
 def viewer_section(df_main):
     try:
         st.subheader("👀 Viewer Dashboard")
