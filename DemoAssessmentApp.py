@@ -1276,7 +1276,6 @@ def viewer_section(df_main):
 def admin_section(df_main):
     try:
         st.subheader("👨‍💼 Super Administrator Section")
-
         if "logged_in" not in st.session_state or not st.session_state.get("logged_in"):
             if not st.session_state.get("popup_dismissed_admin_login_required"):
                 st.session_state["popup_dismissed_admin_login_required"] = True
@@ -1296,7 +1295,6 @@ def admin_section(df_main):
                 </script>
                 """, unsafe_allow_html=True)
             return
-
         evaluators_df = load_evaluators()
         st.markdown("### 🧑‍💻 Existing Evaluators")
         try:
@@ -1324,7 +1322,6 @@ def admin_section(df_main):
                 </script>
                 """, unsafe_allow_html=True)
             return
-
         cols = st.columns([1, 1, 1, 1])
         if cols[0].button("Add New Evaluator"):
             st.session_state.admin_section = "add_evaluator"
@@ -1334,10 +1331,8 @@ def admin_section(df_main):
             st.session_state.admin_section = "edit_evaluator"
         if cols[3].button("Delete Evaluator"):
             st.session_state.admin_section = "delete_evaluator"
-
         section = st.session_state.get("admin_section", "trainer_reports")
         evaluators_df = load_evaluators()
-
         if section == "add_evaluator":
             st.markdown("### 🧑‍💻 Add New Evaluator")
             with st.form("add_eval_form", clear_on_submit=True):
@@ -1346,7 +1341,7 @@ def admin_section(df_main):
                 confirm_password = st.text_input("Confirm Password", type="password", key="new_eval_confirm_pass")
                 full_name = st.text_input("Full Name", key="new_eval_name")
                 email = st.text_input("Email", key="new_eval_email")
-                role_select = st.selectbox("Role", ["Evaluator", "Evaluator_School", "Evaluator_Technical", "Viewer", "Super Administrator"], key="new_eval_role")
+                role_select = st.selectbox("Role", ["Technical Evaluator", "School Operations Evaluator"], key="new_eval_role")
                 submitted = st.form_submit_button("Add Evaluator")
                 if submitted:
                     try:
@@ -1388,52 +1383,35 @@ def admin_section(df_main):
                                 }
                             </script>
                             """, unsafe_allow_html=True)
-
         elif section == "existing_evaluators":
             st.markdown("### 🧑‍💻 Existing Evaluators")
             try:
                 st.dataframe(evaluators_df[["username", "full_name", "email", "role", "created_at"]])
-                # Double-click mechanism for Back to Main
+                # Single-click mechanism for Back to Main
                 if st.button("Back to Main", key="back_to_main_existing"):
-                    current_time = datetime.now()
-                    click_key = "back_to_main_clicks_existing"
-                    time_key = "last_click_time_existing"
-                    if click_key not in st.session_state:
-                        st.session_state[click_key] = 0
-                    if time_key not in st.session_state:
-                        st.session_state[time_key] = current_time
-                    if (current_time - st.session_state[time_key]).total_seconds() > 1:
-                        st.session_state[click_key] = 1
-                    else:
-                        st.session_state[click_key] += 1
-                    st.session_state[time_key] = current_time
-                    if st.session_state[click_key] == 1:
-                        st.info("Please click 'Back to Main' again within 1 second to confirm.")
-                    elif st.session_state[click_key] >= 2:
-                        try:
-                            if df_main is None or df_main.empty:
-                                raise ValueError("Trainer reports data is missing or empty.")
-                            st.session_state.admin_section = "trainer_reports"
-                            st.session_state[click_key] = 0  # Reset clicks
-                        except Exception as e:
-                            logger.error(f"Error navigating to trainer reports: {str(e)}")
-                            if not st.session_state.get("popup_dismissed_back_to_main_existing_error"):
-                                st.session_state["popup_dismissed_back_to_main_existing_error"] = True
-                                st.markdown("""
-                                <div class="error-popup show-popup" id="popup_back_to_main_existing_error">
-                                    <p>Failed to navigate to trainer reports.</p>
-                                    <button class="ok-button" onclick="closePopup('back_to_main_existing_error')">OK</button>
-                                </div>
-                                <script>
-                                    function closePopup(key) {
-                                        var popup = document.getElementById('popup_' + key);
-                                        if (popup) {
-                                            popup.style.display = 'none';
-                                            window.location.reload();
-                                        }
+                    try:
+                        if df_main is None or df_main.empty:
+                            raise ValueError("Trainer reports data is missing or empty.")
+                        st.session_state.admin_section = "trainer_reports"
+                    except Exception as e:
+                        logger.error(f"Error navigating to trainer reports: {str(e)}")
+                        if not st.session_state.get("popup_dismissed_back_to_main_existing_error"):
+                            st.session_state["popup_dismissed_back_to_main_existing_error"] = True
+                            st.markdown("""
+                            <div class="error-popup show-popup" id="popup_back_to_main_existing_error">
+                                <p>Failed to navigate to trainer reports.</p>
+                                <button class="ok-button" onclick="closePopup('back_to_main_existing_error')">OK</button>
+                            </div>
+                            <script>
+                                function closePopup(key) {
+                                    var popup = document.getElementById('popup_' + key);
+                                    if (popup) {
+                                        popup.style.display = 'none';
+                                        window.location.reload();
                                     }
-                                </script>
-                                """, unsafe_allow_html=True)
+                                }
+                            </script>
+                            """, unsafe_allow_html=True)
             except Exception as e:
                 logger.error(f"Error displaying evaluators: {str(e)}")
                 if not st.session_state.get("popup_dismissed_evaluators_list_error"):
@@ -1453,7 +1431,6 @@ def admin_section(df_main):
                         }
                     </script>
                     """, unsafe_allow_html=True)
-
         elif section == "edit_evaluator":
             st.markdown("### 🧑‍💻 Edit Evaluator")
             selected_eval = st.selectbox("Select Evaluator to Edit", [""] + evaluators_df["username"].tolist(), key="select_eval_edit")
@@ -1464,8 +1441,8 @@ def admin_section(df_main):
                         st.markdown(f"**Username:** {row['username']} (immutable)")
                         edit_full_name = st.text_input("Full Name", value=row.get("full_name", ""), key=f"name_{selected_eval}")
                         edit_email = st.text_input("Email", value=row.get("email", ""), key=f"email_{selected_eval}")
-                        edit_role = st.selectbox("Role", ["Evaluator", "Evaluator_School", "Evaluator_Technical", "Viewer", "Super Administrator"],
-                                                 index=["Evaluator", "Evaluator_School", "Evaluator_Technical", "Viewer", "Super Administrator"].index(row.get("role", "Evaluator")),
+                        edit_role = st.selectbox("Role", ["Technical Evaluator", "School Operations Evaluator"],
+                                                 index=["Technical Evaluator", "School Operations Evaluator"].index(row.get("role", "Technical Evaluator")),
                                                  key=f"role_{selected_eval}")
                         change_password = st.checkbox("Change Password", key=f"chpass_{selected_eval}")
                         new_pass = ""
@@ -1525,48 +1502,31 @@ def admin_section(df_main):
                             }
                         </script>
                         """, unsafe_allow_html=True)
-            # Double-click mechanism for Back to Main
+            # Single-click mechanism for Back to Main
             if st.button("Back to Main", key="back_to_main_edit"):
-                current_time = datetime.now()
-                click_key = "back_to_main_clicks_edit"
-                time_key = "last_click_time_edit"
-                if click_key not in st.session_state:
-                    st.session_state[click_key] = 0
-                if time_key not in st.session_state:
-                    st.session_state[time_key] = current_time
-                if (current_time - st.session_state[time_key]).total_seconds() > 1:
-                    st.session_state[click_key] = 1
-                else:
-                    st.session_state[click_key] += 1
-                st.session_state[time_key] = current_time
-                if st.session_state[click_key] == 1:
-                    st.info("Please click 'Back to Main' again within 1 second to confirm.")
-                elif st.session_state[click_key] >= 2:
-                    try:
-                        if df_main is None or df_main.empty:
-                            raise ValueError("Trainer reports data is missing or empty.")
-                        st.session_state.admin_section = "trainer_reports"
-                        st.session_state[click_key] = 0  # Reset clicks
-                    except Exception as e:
-                        logger.error(f"Error navigating to trainer reports: {str(e)}")
-                        if not st.session_state.get("popup_dismissed_back_to_main_edit_error"):
-                            st.session_state["popup_dismissed_back_to_main_edit_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_back_to_main_edit_error">
-                                <p>Failed to navigate to trainer reports.</p>
-                                <button class="ok-button" onclick="closePopup('back_to_main_edit_error')">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {
-                                    var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
+                try:
+                    if df_main is None or df_main.empty:
+                        raise ValueError("Trainer reports data is missing or empty.")
+                    st.session_state.admin_section = "trainer_reports"
+                except Exception as e:
+                    logger.error(f"Error navigating to trainer reports: {str(e)}")
+                    if not st.session_state.get("popup_dismissed_back_to_main_edit_error"):
+                        st.session_state["popup_dismissed_back_to_main_edit_error"] = True
+                        st.markdown("""
+                        <div class="error-popup show-popup" id="popup_back_to_main_edit_error">
+                            <p>Failed to navigate to trainer reports.</p>
+                            <button class="ok-button" onclick="closePopup('back_to_main_edit_error')">OK</button>
+                        </div>
+                        <script>
+                            function closePopup(key) {
+                                var popup = document.getElementById('popup_' + key);
+                                if (popup) {
+                                    popup.style.display = 'none';
+                                    window.location.reload();
                                 }
-                            </script>
-                            """, unsafe_allow_html=True)
-
+                            }
+                        </script>
+                        """, unsafe_allow_html=True)
         elif section == "delete_evaluator":
             st.markdown("### 🧑‍💻 Delete Evaluator")
             selected_eval = st.selectbox("Select Evaluator to Delete", [""] + evaluators_df["username"].tolist(), key="select_eval_delete")
@@ -1595,57 +1555,39 @@ def admin_section(df_main):
                                 }
                             </script>
                             """, unsafe_allow_html=True)
-            # Double-click mechanism for Back to Main
+            # Single-click mechanism for Back to Main
             if st.button("Back to Main", key="back_to_main_delete"):
-                current_time = datetime.now()
-                click_key = "back_to_main_clicks_delete"
-                time_key = "last_click_time_delete"
-                if click_key not in st.session_state:
-                    st.session_state[click_key] = 0
-                if time_key not in st.session_state:
-                    st.session_state[time_key] = current_time
-                if (current_time - st.session_state[time_key]).total_seconds() > 1:
-                    st.session_state[click_key] = 1
-                else:
-                    st.session_state[click_key] += 1
-                st.session_state[time_key] = current_time
-                if st.session_state[click_key] == 1:
-                    st.info("Please click 'Back to Main' again within 1 second to confirm.")
-                elif st.session_state[click_key] >= 2:
-                    try:
-                        if df_main is None or df_main.empty:
-                            raise ValueError("Trainer reports data is missing or empty.")
-                        st.session_state.admin_section = "trainer_reports"
-                        st.session_state[click_key] = 0  # Reset clicks
-                    except Exception as e:
-                        logger.error(f"Error navigating to trainer reports: {str(e)}")
-                        if not st.session_state.get("popup_dismissed_back_to_main_delete_error"):
-                            st.session_state["popup_dismissed_back_to_main_delete_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_back_to_main_delete_error">
-                                <p>Failed to navigate to trainer reports.</p>
-                                <button class="ok-button" onclick="closePopup('back_to_main_delete_error')">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {
-                                    var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
+                try:
+                    if df_main is None or df_main.empty:
+                        raise ValueError("Trainer reports data is missing or empty.")
+                    st.session_state.admin_section = "trainer_reports"
+                except Exception as e:
+                    logger.error(f"Error navigating to trainer reports: {str(e)}")
+                    if not st.session_state.get("popup_dismissed_back_to_main_delete_error"):
+                        st.session_state["popup_dismissed_back_to_main_delete_error"] = True
+                        st.markdown("""
+                        <div class="error-popup show-popup" id="popup_back_to_main_delete_error">
+                            <p>Failed to navigate to trainer reports.</p>
+                            <button class="ok-button" onclick="closePopup('back_to_main_delete_error')">OK</button>
+                        </div>
+                        <script>
+                            function closePopup(key) {
+                                var popup = document.getElementById('popup_' + key);
+                                if (popup) {
+                                    popup.style.display = 'none';
+                                    window.location.reload();
                                 }
-                            </script>
-                            """, unsafe_allow_html=True)
-
+                            }
+                        </script>
+                        """, unsafe_allow_html=True)
         else:
             try:
                 if df_main is None or df_main.empty:
                     raise ValueError("Trainer reports data is missing or empty.")
                 st.markdown("---")
                 st.markdown("### 📋 Trainer Reports Overview")
-
                 trainer_filter = st.text_input("Filter by Trainer Name or ID", "", help="Press Enter to Apply")
-                
+               
                 filtered = df_main.copy()
                 if trainer_filter:
                     try:
@@ -1672,18 +1614,15 @@ def admin_section(df_main):
                             </script>
                             """, unsafe_allow_html=True)
                         return
-
                 if not filtered.empty:
                     st.markdown("#### Matching Trainer Assessments")
                     st.dataframe(filtered)
-
                 trainer_ids = sorted(filtered["Trainer ID"].dropna().unique().tolist())
                 selected_trainer = st.selectbox("Select Trainer for Detailed Report", [""] + trainer_ids)
                 if selected_trainer:
                     trainer_reports = df_main[df_main["Trainer ID"] == selected_trainer]
                     st.markdown(f"##### Reports for Trainer ID: {selected_trainer}")
                     st.dataframe(trainer_reports)
-
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         csv_data = trainer_reports.to_csv(index=False)
@@ -1716,10 +1655,10 @@ def admin_section(df_main):
                             pdf.drawString(100, y, "Evaluators")
                             y -= 20
                             pdf.setFillColor(colors.black)
-                            pdf.drawString(100, y, "Username  Full Name  Email  Role  Created At")
+                            pdf.drawString(100, y, "Username Full Name Email Role Created At")
                             y -= 20
                             for _, row in evaluators_df.iterrows():
-                                text = f"{row['username']}  {row['full_name']}  {row['email']}  {row['role']}  {row['created_at']}"
+                                text = f"{row['username']} {row['full_name']} {row['email']} {row['role']} {row['created_at']}"
                                 pdf.drawString(100, y, text)
                                 y -= 20
                                 if y < 50:
@@ -1729,12 +1668,12 @@ def admin_section(df_main):
                             y -= 20
                             pdf.drawString(100, y, "Trainers")
                             y -= 20
-                            pdf.drawString(100, y, "Trainer ID  Trainer Name  Branch  Department")
+                            pdf.drawString(100, y, "Trainer ID Trainer Name Branch Department")
                             y -= 20
                             if os.path.exists(DEFAULT_DATA_FILE):
                                 trainers_df = pd.read_csv(DEFAULT_DATA_FILE)
                                 for _, row in trainers_df.iterrows():
-                                    text = f"{row['Trainer ID']}  {row['Trainer Name']}  {row.get('Branch', '')}  {row.get('Department', '')}"
+                                    text = f"{row['Trainer ID']} {row['Trainer Name']} {row.get('Branch', '')} {row.get('Department', '')}"
                                     pdf.drawString(100, y, text)
                                     y -= 20
                                     if y < 50:
@@ -1790,7 +1729,6 @@ def admin_section(df_main):
                         }
                     </script>
                     """, unsafe_allow_html=True)
-
         # NEW Button: DOWNLOAD EVALUATORS
         timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M")
         evaluators_csv_data = evaluators_df.to_csv(index=False)
@@ -1801,7 +1739,6 @@ def admin_section(df_main):
             mime="text/csv",
             key="download_evaluators_csv"
         )
-
         if st.button("Logout", key="admin_logout"):
             try:
                 for key in ["logged_in", "role", "logged_user"]:
@@ -1846,8 +1783,8 @@ def admin_section(df_main):
                     }
                 }
             </script>
-            """, unsafe_allow_html=True)    
-        
+            """, unsafe_allow_html=True)
+                    
 def set_background(image_file):
     try:
         with open(image_file, "rb") as image:
