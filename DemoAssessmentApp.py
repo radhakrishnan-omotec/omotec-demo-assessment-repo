@@ -267,21 +267,12 @@ def evaluator_section(df_main):
         </style>
         """, unsafe_allow_html=True)
 
-        def show_popup(message, key):
+        def show_error_message(message, key):
             html = f"""
-            <div class="error-popup show-popup" id="popup_{key}">
-                <p>{message}</p>
-                <button class="ok-button" onclick="closePopup('{key}')">OK</button>
+            <div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #f8d7da; padding: 10px; text-align: center; z-index: 1000;" id="error_{key}">
+                <p style="color: red; margin: 0; font-weight: bold;">{message}</p>
+                <button style="margin-top: 10px; padding: 5px 10px; cursor: pointer;" onclick="document.getElementById('error_{key}').remove()">OK</button>
             </div>
-            <script>
-                function closePopup(key) {{
-                    var popup = document.getElementById('popup_' + key);
-                    if (popup) {{
-                        popup.style.display = 'none';
-                        window.location.reload();
-                    }}
-                }}
-            </script>
             """
             st.markdown(html, unsafe_allow_html=True)
 
@@ -291,7 +282,7 @@ def evaluator_section(df_main):
 
         df = df_main.copy()
         if "Trainer ID" not in df.columns:
-            show_popup("❌ 'Trainer ID' column missing in data.", "missing_trainer_id")
+            show_error_message("❌ 'Trainer ID' column missing in data.", "missing_trainer_id")
             return
 
         evaluator_role = st.selectbox(
@@ -329,7 +320,7 @@ def evaluator_section(df_main):
                 if os.path.exists(DEFAULT_DATA_FILE):
                     eval_inputs_df = pd.read_csv(DEFAULT_DATA_FILE).fillna("")
                     if "Trainer ID" not in eval_inputs_df.columns:
-                        show_popup("❌ 'Trainer ID' column missing in EVALUATOR_INPUT.csv.", "missing_trainer_id_csv")
+                        show_error_message("❌ 'Trainer ID' column missing in EVALUATOR_INPUT.csv.", "missing_trainer_id_csv")
                         return
                     available_ids = [""] + eval_inputs_df["Trainer ID"].dropna().unique().tolist()
                     selected_id = st.selectbox("Select Existing Trainer ID", available_ids, index=0)
@@ -341,11 +332,11 @@ def evaluator_section(df_main):
                         trainer_email = trainer_data.get("Email", "")
                         st.success(f"Loaded Trainer ID: {trainer_id}")
                 else:
-                    show_popup("EVALUATOR_INPUT.csv not found.", "file_not_found")
+                    show_error_message("EVALUATOR_INPUT.csv not found.", "file_not_found")
                     return
             except Exception as e:
                 logger.error(f"Error loading existing trainer data: {str(e)}")
-                show_popup("Unable to load trainer data, please check the file or try again.", "load_error")
+                show_error_message("Unable to load trainer data, please check the file or try again.", "load_error")
                 return
 
             # Make details editable
@@ -367,7 +358,7 @@ def evaluator_section(df_main):
             if st.button("SUBMISSION", key=f"submit_new_trainer_{trainer_name}"):
                 try:
                     if not trainer_id and not (trainer_name and department and trainer_email):
-                        show_popup("Mandatory fields (Trainer Name, Department, Email) are missing!", "mandatory_fields_missing")
+                        show_error_message("Mandatory fields (Trainer Name, Department, Email) are missing!", "mandatory_fields_missing")
                         return
                     if not trainer_id:
                         import uuid
@@ -394,7 +385,7 @@ def evaluator_section(df_main):
                     st.rerun()
                 except Exception as e:
                     logger.error(f"Error creating or updating trainer: {str(e)}")
-                    show_popup("Failed to create or update trainer due to an error!", "trainer_update_error")
+                    show_error_message("Failed to create or update trainer due to an error!", "trainer_update_error")
                     return
 
         # Display previous assessments
@@ -419,7 +410,7 @@ def evaluator_section(df_main):
                 submissions[f"{level}_submissions"] = len(set(evaluators))
         except Exception as e:
             logger.error(f"Error processing level statuses: {str(e)}")
-            show_popup("Unable to process some level statuses, continuing with available data.", "level_status_error")
+            show_error_message("Unable to process some level statuses, continuing with available data.", "level_status_error")
             return
 
         level_1_qualified = all(past_assessments[f"LEVEL #1 Course :{i} STATUS"].eq("QUALIFIED").all() for i in range(1, 11)) if not past_assessments.empty and all(f"LEVEL #1 Course :{i} STATUS" in past_assessments.columns for i in range(1, 11)) else False
@@ -508,7 +499,7 @@ def evaluator_section(df_main):
                                         if st.button(f"Calculate Score", key=f"calc_{level}_{i}_{trainer_id}"):
                                             try:
                                                 if not course_select:
-                                                    show_popup("Please select a course name!", "no_course_selected_calc")
+                                                    show_error_message("Please select a course name!", "no_course_selected_calc")
                                                     return
                                                 calculated_total = (
                                                     param_has_stem + param_integration + param_up_to_date +
@@ -550,13 +541,13 @@ def evaluator_section(df_main):
 
                                             except Exception as e:
                                                 logger.error(f"Error updating data on Calculate Score: {str(e)}")
-                                                show_popup("Error calculating score, please check inputs!", "calc_score_error")
+                                                show_error_message("Error calculating score, please check inputs!", "calc_score_error")
                                                 return
                                     elif evaluator_role == "School Operations Evaluator":
                                         if st.button(f"Calculate Score", key=f"calc_{level}_{i}_{trainer_id}"):
                                             try:
                                                 if not course_select:
-                                                    show_popup("Please select a course name!", "no_course_selected_calc")
+                                                    show_error_message("Please select a course name!", "no_course_selected_calc")
                                                     return
                                                 calculated_total = (
                                                     param_time + param_engagement + param_pleasing +
@@ -598,7 +589,7 @@ def evaluator_section(df_main):
 
                                             except Exception as e:
                                                 logger.error(f"Error updating data on Calculate Score: {str(e)}")
-                                                show_popup("Error calculating score, please check inputs!", "calc_score_error")
+                                                show_error_message("Error calculating score, please check inputs!", "calc_score_error")
                                                 return
                                     # Updated logic: Display scores visibly below the Calculate Score button
                                     calculated_total = st.session_state.get(f"total_{level}_{i}_{trainer_id}", 0)
@@ -764,7 +755,7 @@ def evaluator_section(df_main):
                                     st.rerun()
                                 except Exception as e:
                                     logger.error(f"Error saving assessment: {str(e)}")
-                                    show_popup("Failed to save assessment due to an error!", "save_assessment_error")
+                                    show_error_message("Failed to save assessment due to an error!", "save_assessment_error")
                                     return
 
                             reminder = st.text_area("Reminder", key=f"reminder_{level}_{trainer_id}")
@@ -773,19 +764,19 @@ def evaluator_section(df_main):
                             if st.button("Prepare Reminder Email", key=f"prepare_reminder_{level}_{trainer_id}"):
                                 try:
                                     if not reminder_email:
-                                        show_popup("Please enter a reminder email!", "no_reminder_email")
+                                        show_error_message("Please enter a reminder email!", "no_reminder_email")
                                         return
                                     st.session_state[f"prepared_email_{level}_{trainer_id}"] = reminder_email
                                     st.success(f"Reminder email prepared for {reminder_email}")
                                 except Exception as e:
                                     logger.error(f"Error preparing reminder email: {str(e)}")
-                                    show_popup("Failed to prepare reminder email!", "prepare_email_error")
+                                    show_error_message("Failed to prepare reminder email!", "prepare_email_error")
                                     return
 
                             if st.button("Open to send mail", key=f"open_mail_{level}_{trainer_id}"):
                                 try:
                                     if not reminder_email:
-                                        show_popup("Please enter a reminder email!", "no_reminder_email_send")
+                                        show_error_message("Please enter a reminder email!", "no_reminder_email_send")
                                         return
                                     import webbrowser
                                     subject = f"Reminder for {level}"
@@ -795,7 +786,7 @@ def evaluator_section(df_main):
                                     st.success("Gmail mailbox opened for sending email.")
                                 except Exception as e:
                                     logger.error(f"Error opening mail: {str(e)}")
-                                    show_popup("Failed to open mail client!", "open_mail_error")
+                                    show_error_message("Failed to open mail client!", "open_mail_error")
                                     return
 
                             if st.button("Submit Evaluation", key=f"submit_{level}_{trainer_id}"):
@@ -815,11 +806,11 @@ def evaluator_section(df_main):
                                         missing_fields.append("Manager Referral")
 
                                     if missing_fields:
-                                        show_popup("Missing required fields: " + ", ".join(missing_fields), "missing_required_fields")
+                                        show_error_message("Missing required fields: " + ", ".join(missing_fields), "missing_required_fields")
                                         return
 
                                     if not all_courses_cleared or (level == "LEVEL #3" and not manager_referral):
-                                        show_popup(f"All 10 courses must be cleared (name, passed, avg ≥ {min_avg_threshold}%) and Manager Referral required for Level 3!", "submit_eval_error")
+                                        show_error_message(f"All 10 courses must be cleared (name, passed, avg ≥ {min_avg_threshold}%) and Manager Referral required for Level 3!", "submit_eval_error")
                                         return
                                     entry = {
                                         "Trainer ID": trainer_id,
@@ -970,15 +961,15 @@ def evaluator_section(df_main):
                                             )
                                         except Exception as e:
                                             logger.error(f"Error generating PDF: {str(e)}")
-                                            show_popup("Failed to generate PDF report!", "pdf_gen_error")
+                                            show_error_message("Failed to generate PDF report!", "pdf_gen_error")
                                             return
                                 except Exception as e:
                                     logger.error(f"Error submitting evaluation: {str(e)}")
-                                    show_popup("Failed to submit evaluation!", "submit_eval_final_error")
+                                    show_error_message("Failed to submit evaluation!", "submit_eval_final_error")
                                     return
                 except Exception as e:
                     logger.error(f"Error in assessment section: {str(e)}")
-                    show_popup("Error processing assessment data!", "assessment_section_error")
+                    show_error_message("Error processing assessment data!", "assessment_section_error")
                     return
         if st.button("View All Trainers", key="view_all_trainers"):
             try:
@@ -987,11 +978,11 @@ def evaluator_section(df_main):
                     st.markdown("### 🆔 All Trainers")
                     st.dataframe(all_trainers, use_container_width=True)
                 else:
-                    show_popup("EVALUATOR_INPUT.csv not found.", "view_trainers_file_not_found")
+                    show_error_message("EVALUATOR_INPUT.csv not found.", "view_trainers_file_not_found")
                     return
             except Exception as e:
                 logger.error(f"Error viewing all trainers: {str(e)}")
-                show_popup("Failed to display trainer list!", "view_trainers_error")
+                show_error_message("Failed to display trainer list!", "view_trainers_error")
                 return
 
         if st.button("Logout", key="evaluator_logout"):
@@ -1003,11 +994,11 @@ def evaluator_section(df_main):
                 st.rerun()
             except Exception as e:
                 logger.error(f"Error during logout: {str(e)}")
-                show_popup("Failed to logout!", "logout_error")
+                show_error_message("Failed to logout!", "logout_error")
                 return
     except Exception as e:
         logger.error(f"Error in evaluator section: {str(e)}")
-        show_popup("Unable to process the dashboard, please try again!", "dashboard_error")
+        show_error_message("Unable to process the dashboard, please try again!", "dashboard_error")
         if st.button("Logout", key="evaluator_logout_exception"):
             try:
                 for key in ["logged_in", "role", "logged_user"]:
@@ -1017,7 +1008,7 @@ def evaluator_section(df_main):
                 st.rerun()
             except Exception as e:
                 logger.error(f"Error during logout: {str(e)}")
-                show_popup("Failed to logout!", "logout_exception_error")
+                show_error_message("Failed to logout!", "logout_exception_error")
                 return
                                                    
 def viewer_section(df_main):
@@ -1029,16 +1020,14 @@ def viewer_section(df_main):
                 st.markdown("""
                 <div class="error-popup show-popup" id="popup_viewer_login_required">
                     <p>Please login to access the viewer panel.</p>
-                    <button class="ok-button" onclick="closePopup('viewer_login_required')">OK</button>
+                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                 </div>
                 <script>
-                    function closePopup(key) {
+                    function closePopup(key) {{
                         var popup = document.getElementById('popup_' + key);
-                        if (popup) {
-                            popup.style.display = 'none';
-                            window.location.reload();
-                        }
-                    }
+                        popup.remove();  // Directly removes the popup from the DOM
+                        
+                    }}
                 </script>
                 """, unsafe_allow_html=True)
             return
@@ -1050,16 +1039,14 @@ def viewer_section(df_main):
                 st.markdown("""
                 <div class="error-popup show-popup" id="popup_viewer_trainer_id_missing">
                     <p>❌ 'Trainer ID' column missing in data.</p>
-                    <button class="ok-button" onclick="closePopup('viewer_trainer_id_missing')">OK</button>
+                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                 </div>
                 <script>
-                    function closePopup(key) {
+                    function closePopup(key) {{
                         var popup = document.getElementById('popup_' + key);
-                        if (popup) {
-                            popup.style.display = 'none';
-                            window.location.reload();
-                        }
-                    }
+                        popup.remove();  // Directly removes the popup from the DOM
+                        
+                    }}
                 </script>
                 """, unsafe_allow_html=True)
             return
@@ -1080,16 +1067,14 @@ def viewer_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_trainer_filter_error">
                         <p>Failed to apply trainer filter.</p>
-                        <button class="ok-button" onclick="closePopup('trainer_filter_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
                 return
@@ -1157,16 +1142,14 @@ def viewer_section(df_main):
                         st.markdown("""
                         <div class="error-popup show-popup" id="popup_pdf_gen_error">
                             <p>Failed to generate PDF report.</p>
-                            <button class="ok-button" onclick="closePopup('pdf_gen_error')">OK</button>
+                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                         </div>
                         <script>
-                            function closePopup(key) {
+                            function closePopup(key) {{
                                 var popup = document.getElementById('popup_' + key);
-                                if (popup) {
-                                    popup.style.display = 'none';
-                                    window.location.reload();
-                                }
-                            }
+                                popup.remove();  // Directly removes the popup from the DOM
+                                
+                            }}
                         </script>
                         """, unsafe_allow_html=True)
                     return
@@ -1191,16 +1174,14 @@ def viewer_section(df_main):
                         st.markdown("""
                         <div class="error-popup show-popup" id="popup_viewer_trainers_file_not_found">
                             <p>EVALUATOR_INPUT.csv not found.</p>
-                            <button class="ok-button" onclick="closePopup('viewer_trainers_file_not_found')">OK</button>
+                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                         </div>
                         <script>
-                            function closePopup(key) {
+                            function closePopup(key) {{
                                 var popup = document.getElementById('popup_' + key);
-                                if (popup) {
-                                    popup.style.display = 'none';
-                                    window.location.reload();
-                                }
-                            }
+                                popup.remove();  // Directly removes the popup from the DOM
+                                
+                            }}
                         </script>
                         """, unsafe_allow_html=True)
                     return
@@ -1211,16 +1192,14 @@ def viewer_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_view_trainers_error">
                         <p>Failed to display trainer list.</p>
-                        <button class="ok-button" onclick="closePopup('view_trainers_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
                 return
@@ -1239,16 +1218,14 @@ def viewer_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_viewer_logout_error">
                         <p>Failed to logout. Please try again.</p>
-                        <button class="ok-button" onclick="closePopup('viewer_logout_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
                 return
@@ -1259,16 +1236,14 @@ def viewer_section(df_main):
             st.markdown("""
             <div class="error-popup show-popup" id="popup_viewer_dashboard_error">
                 <p>An unexpected error occurred in the Viewer Dashboard.</p>
-                <button class="ok-button" onclick="closePopup('viewer_dashboard_error')">OK</button>
+                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
             </div>
             <script>
-                function closePopup(key) {
+                function closePopup(key) {{
                     var popup = document.getElementById('popup_' + key);
-                    if (popup) {
-                        popup.style.display = 'none';
-                        window.location.reload();
-                    }
-                }
+                    popup.remove();  // Directly removes the popup from the DOM
+                    
+                }}
             </script>
             """, unsafe_allow_html=True)
         return
@@ -1282,16 +1257,14 @@ def admin_section(df_main):
                 st.markdown("""
                 <div class="error-popup show-popup" id="popup_admin_login_required">
                     <p>Please login to access the admin panel.</p>
-                    <button class="ok-button" onclick="closePopup('admin_login_required')">OK</button>
+                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                 </div>
                 <script>
-                    function closePopup(key) {
+                    function closePopup(key) {{
                         var popup = document.getElementById('popup_' + key);
-                        if (popup) {
-                            popup.style.display = 'none';
-                            window.location.reload();
-                        }
-                    }
+                        popup.remove();  // Directly removes the popup from the DOM
+                        
+                    }}
                 </script>
                 """, unsafe_allow_html=True)
             return
@@ -1309,16 +1282,14 @@ def admin_section(df_main):
                 st.markdown("""
                 <div class="error-popup show-popup" id="popup_evaluators_list_error">
                     <p>Failed to display evaluators list.</p>
-                    <button class="ok-button" onclick="closePopup('evaluators_list_error')">OK</button>
+                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                 </div>
                 <script>
-                    function closePopup(key) {
+                    function closePopup(key) {{
                         var popup = document.getElementById('popup_' + key);
-                        if (popup) {
-                            popup.style.display = 'none';
-                            window.location.reload();
-                        }
-                    }
+                        popup.remove();  // Directly removes the popup from the DOM
+                        
+                    }}
                 </script>
                 """, unsafe_allow_html=True)
             return
@@ -1371,16 +1342,14 @@ def admin_section(df_main):
                             st.markdown("""
                             <div class="error-popup show-popup" id="popup_add_evaluator_error">
                                 <p>Failed to add new evaluator.</p>
-                                <button class="ok-button" onclick="closePopup('add_evaluator_error')">OK</button>
+                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                             </div>
                             <script>
-                                function closePopup(key) {
+                                function closePopup(key) {{
                                     var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
-                                }
+                                    popup.remove();  // Directly removes the popup from the DOM
+                                    
+                                }}
                             </script>
                             """, unsafe_allow_html=True)
         elif section == "existing_evaluators":
@@ -1400,16 +1369,14 @@ def admin_section(df_main):
                             st.markdown("""
                             <div class="error-popup show-popup" id="popup_back_to_main_existing_error">
                                 <p>Failed to navigate to trainer reports.</p>
-                                <button class="ok-button" onclick="closePopup('back_to_main_existing_error')">OK</button>
+                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                             </div>
                             <script>
-                                function closePopup(key) {
+                                function closePopup(key) {{
                                     var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
-                                }
+                                    popup.remove();  // Directly removes the popup from the DOM
+                                    
+                                }}
                             </script>
                             """, unsafe_allow_html=True)
             except Exception as e:
@@ -1419,16 +1386,14 @@ def admin_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_evaluators_list_error">
                         <p>Failed to display evaluators list.</p>
-                        <button class="ok-button" onclick="closePopup('evaluators_list_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
         elif section == "edit_evaluator":
@@ -1471,16 +1436,14 @@ def admin_section(df_main):
                                     st.markdown("""
                                     <div class="error-popup show-popup" id="popup_edit_evaluator_error">
                                         <p>Failed to edit evaluator.</p>
-                                        <button class="ok-button" onclick="closePopup('edit_evaluator_error')">OK</button>
+                                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                                     </div>
                                     <script>
-                                        function closePopup(key) {
+                                        function closePopup(key) {{
                                             var popup = document.getElementById('popup_' + key);
-                                            if (popup) {
-                                                popup.style.display = 'none';
-                                                window.location.reload();
-                                            }
-                                        }
+                                            popup.remove();  // Directly removes the popup from the DOM
+                                            
+                                        }}
                                     </script>
                                     """, unsafe_allow_html=True)
                 except Exception as e:
@@ -1490,16 +1453,14 @@ def admin_section(df_main):
                         st.markdown("""
                         <div class="error-popup show-popup" id="popup_edit_evaluator_error">
                             <p>Failed to edit evaluator.</p>
-                            <button class="ok-button" onclick="closePopup('edit_evaluator_error')">OK</button>
+                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                         </div>
                         <script>
-                            function closePopup(key) {
+                            function closePopup(key) {{
                                 var popup = document.getElementById('popup_' + key);
-                                if (popup) {
-                                    popup.style.display = 'none';
-                                    window.location.reload();
-                                }
-                            }
+                                popup.remove();  // Directly removes the popup from the DOM
+                                
+                            }}
                         </script>
                         """, unsafe_allow_html=True)
             # Single-click mechanism for Back to Main
@@ -1515,16 +1476,14 @@ def admin_section(df_main):
                         st.markdown("""
                         <div class="error-popup show-popup" id="popup_back_to_main_edit_error">
                             <p>Failed to navigate to trainer reports.</p>
-                            <button class="ok-button" onclick="closePopup('back_to_main_edit_error')">OK</button>
+                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                         </div>
                         <script>
-                            function closePopup(key) {
+                            function closePopup(key) {{
                                 var popup = document.getElementById('popup_' + key);
-                                if (popup) {
-                                    popup.style.display = 'none';
-                                    window.location.reload();
-                                }
-                            }
+                                popup.remove();  // Directly removes the popup from the DOM
+                                
+                            }}
                         </script>
                         """, unsafe_allow_html=True)
         elif section == "delete_evaluator":
@@ -1543,16 +1502,14 @@ def admin_section(df_main):
                             st.markdown("""
                             <div class="error-popup show-popup" id="popup_delete_evaluator_error">
                                 <p>Failed to delete evaluator.</p>
-                                <button class="ok-button" onclick="closePopup('delete_evaluator_error')">OK</button>
+                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                             </div>
                             <script>
-                                function closePopup(key) {
+                                function closePopup(key) {{
                                     var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
-                                }
+                                    popup.remove();  // Directly removes the popup from the DOM
+                                    
+                                }}
                             </script>
                             """, unsafe_allow_html=True)
             # Single-click mechanism for Back to Main
@@ -1568,16 +1525,14 @@ def admin_section(df_main):
                         st.markdown("""
                         <div class="error-popup show-popup" id="popup_back_to_main_delete_error">
                             <p>Failed to navigate to trainer reports.</p>
-                            <button class="ok-button" onclick="closePopup('back_to_main_delete_error')">OK</button>
+                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                         </div>
                         <script>
-                            function closePopup(key) {
+                            function closePopup(key) {{
                                 var popup = document.getElementById('popup_' + key);
-                                if (popup) {
-                                    popup.style.display = 'none';
-                                    window.location.reload();
-                                }
-                            }
+                                popup.remove();  // Directly removes the popup from the DOM
+                                
+                            }}
                         </script>
                         """, unsafe_allow_html=True)
         else:
@@ -1601,16 +1556,14 @@ def admin_section(df_main):
                             st.markdown("""
                             <div class="error-popup show-popup" id="popup_trainer_filter_error">
                                 <p>Failed to apply trainer filter.</p>
-                                <button class="ok-button" onclick="closePopup('trainer_filter_error')">OK</button>
+                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                             </div>
                             <script>
-                                function closePopup(key) {
+                                function closePopup(key) {{
                                     var popup = document.getElementById('popup_' + key);
-                                    if (popup) {
-                                        popup.style.display = 'none';
-                                        window.location.reload();
-                                    }
-                                }
+                                    popup.remove();  // Directly removes the popup from the DOM
+                                    
+                                }}
                             </script>
                             """, unsafe_allow_html=True)
                         return
@@ -1698,16 +1651,14 @@ def admin_section(df_main):
                                 st.markdown("""
                                 <div class="error-popup show-popup" id="popup_pdf_report_error">
                                     <p>Failed to generate PDF report.</p>
-                                    <button class="ok-button" onclick="closePopup('pdf_report_error')">OK</button>
+                                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                                 </div>
                                 <script>
-                                    function closePopup(key) {
+                                    function closePopup(key) {{
                                         var popup = document.getElementById('popup_' + key);
-                                        if (popup) {
-                                            popup.style.display = 'none';
-                                            window.location.reload();
-                                        }
-                                    }
+                                        popup.remove();  // Directly removes the popup from the DOM
+                                        
+                                    }}
                                 </script>
                                 """, unsafe_allow_html=True)
             except Exception as e:
@@ -1717,16 +1668,14 @@ def admin_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_trainer_reports_error">
                         <p>Failed to load trainer reports.</p>
-                        <button class="ok-button" onclick="closePopup('trainer_reports_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
         # NEW Button: DOWNLOAD EVALUATORS
@@ -1753,16 +1702,14 @@ def admin_section(df_main):
                     st.markdown("""
                     <div class="error-popup show-popup" id="popup_admin_logout_error">
                         <p>Failed to logout. Please try again.</p>
-                        <button class="ok-button" onclick="closePopup('admin_logout_error')">OK</button>
+                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
                     </div>
                     <script>
-                        function closePopup(key) {
+                        function closePopup(key) {{
                             var popup = document.getElementById('popup_' + key);
-                            if (popup) {
-                                popup.style.display = 'none';
-                                window.location.reload();
-                            }
-                        }
+                            popup.remove();  // Directly removes the popup from the DOM
+                            
+                        }}
                     </script>
                     """, unsafe_allow_html=True)
     except Exception as e:
@@ -1772,16 +1719,14 @@ def admin_section(df_main):
             st.markdown("""
             <div class="error-popup show-popup" id="popup_admin_dashboard_error">
                 <p>An unexpected error occurred in the Admin Dashboard.</p>
-                <button class="ok-button" onclick="closePopup('admin_dashboard_error')">OK</button>
+                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
             </div>
             <script>
-                function closePopup(key) {
+                function closePopup(key) {{
                     var popup = document.getElementById('popup_' + key);
-                    if (popup) {
-                        popup.style.display = 'none';
-                        window.location.reload();
-                    }
-                }
+                    popup.remove();  // Directly removes the popup from the DOM
+                    
+                }}
             </script>
             """, unsafe_allow_html=True)
                     
