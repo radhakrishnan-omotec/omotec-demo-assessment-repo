@@ -270,7 +270,7 @@ def evaluator_section(df_main):
         def show_error_message(message, key):
             html = f"""
             <div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #f8d7da; padding: 10px; text-align: center; z-index: 1000;" id="error_{key}">
-                <p style="color: red; margin: 0; font-weight: bold;">{message}</p>
+                <p style="color: red; margin: 0; font-weight: bold; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">{message}</p>
                 <button style="margin-top: 10px; padding: 5px 10px; cursor: pointer;" onclick="document.getElementById('error_{key}').remove()">OK</button>
             </div>
             """
