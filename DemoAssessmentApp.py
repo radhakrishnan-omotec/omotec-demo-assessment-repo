@@ -193,7 +193,7 @@ def evaluator_section(df_main):
     try:
         st.subheader("🧑‍🏫 Evaluator Dashboard")
 
-        # CSS for tab animations, level heading backgrounds, and error popups with OK button
+        # CSS for tab animations, level heading backgrounds, and score metrics
         st.markdown("""
         <style>
         .stTabs [role="tab"] {
@@ -221,34 +221,6 @@ def evaluator_section(df_main):
             border-radius: 5px;
             color: white;
         }
-        .error-popup {
-            background-color: #ffcccc;
-            border: 2px solid #ff0000;
-            padding: 10px;
-            border-radius: 5px;
-            color: #ff0000;
-            display: none;
-            position: fixed;
-            top: 20%;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            text-align: center;
-        }
-        .show-popup { display: block; }
-        .ok-button {
-            background-color: #ff0000;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        .ok-button:hover {
-            background-color: #cc0000;
-        }
-        /* New: Score Metrics Styling */
         .score-metric {
             background-color: #f0f2f6;
             padding: 10px;
@@ -271,7 +243,7 @@ def evaluator_section(df_main):
             html = f"""
             <div style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #f8d7da; padding: 10px; text-align: center; z-index: 1000;" id="error_{key}">
                 <p style="color: red; margin: 0; font-weight: bold; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">{message}</p>
-                <button style="margin-top: 10px; padding: 5px 10px; cursor: pointer;" onclick="document.getElementById('error_{key}').remove()">OK</button>
+                <p style="color: green; margin: 5px 0 0 0; font-weight: bold;">Proceed with your corrected data</p>
             </div>
             """
             st.markdown(html, unsafe_allow_html=True)
@@ -1017,38 +989,14 @@ def viewer_section(df_main):
         if "logged_in" not in st.session_state or not st.session_state.get("logged_in"):
             if not st.session_state.get("popup_dismissed_viewer_login_required"):
                 st.session_state["popup_dismissed_viewer_login_required"] = True
-                st.markdown("""
-                <div class="error-popup show-popup" id="popup_viewer_login_required">
-                    <p>Please login to access the viewer panel.</p>
-                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                </div>
-                <script>
-                    function closePopup(key) {{
-                        var popup = document.getElementById('popup_' + key);
-                        popup.remove();  // Directly removes the popup from the DOM
-                        
-                    }}
-                </script>
-                """, unsafe_allow_html=True)
+                show_error_message("Please login to access the viewer panel.", "viewer_login_required")
             return
 
         df = df_main.copy()
         if "Trainer ID" not in df.columns:
             if not st.session_state.get("popup_dismissed_viewer_trainer_id_missing"):
                 st.session_state["popup_dismissed_viewer_trainer_id_missing"] = True
-                st.markdown("""
-                <div class="error-popup show-popup" id="popup_viewer_trainer_id_missing">
-                    <p>❌ 'Trainer ID' column missing in data.</p>
-                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                </div>
-                <script>
-                    function closePopup(key) {{
-                        var popup = document.getElementById('popup_' + key);
-                        popup.remove();  // Directly removes the popup from the DOM
-                        
-                    }}
-                </script>
-                """, unsafe_allow_html=True)
+                show_error_message("❌ 'Trainer ID' column missing in data.", "viewer_trainer_id_missing")
             return
 
         st.markdown("### 📋 Trainer Assessments")
@@ -1064,19 +1012,7 @@ def viewer_section(df_main):
                 logger.error(f"Error filtering trainers: {str(e)}")
                 if not st.session_state.get("popup_dismissed_trainer_filter_error"):
                     st.session_state["popup_dismissed_trainer_filter_error"] = True
-                    st.markdown("""
-                    <div class="error-popup show-popup" id="popup_trainer_filter_error">
-                        <p>Failed to apply trainer filter.</p>
-                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                    </div>
-                    <script>
-                        function closePopup(key) {{
-                            var popup = document.getElementById('popup_' + key);
-                            popup.remove();  // Directly removes the popup from the DOM
-                            
-                        }}
-                    </script>
-                    """, unsafe_allow_html=True)
+                    show_error_message("Failed to apply trainer filter.", "trainer_filter_error")
                 return
 
         if not filtered.empty:
@@ -1139,19 +1075,7 @@ def viewer_section(df_main):
                     logger.error(f"Error generating PDF: {str(e)}")
                     if not st.session_state.get("popup_dismissed_pdf_gen_error"):
                         st.session_state["popup_dismissed_pdf_gen_error"] = True
-                        st.markdown("""
-                        <div class="error-popup show-popup" id="popup_pdf_gen_error">
-                            <p>Failed to generate PDF report.</p>
-                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                        </div>
-                        <script>
-                            function closePopup(key) {{
-                                var popup = document.getElementById('popup_' + key);
-                                popup.remove();  // Directly removes the popup from the DOM
-                                
-                            }}
-                        </script>
-                        """, unsafe_allow_html=True)
+                        show_error_message("Failed to generate PDF report.", "pdf_gen_error")
                     return
 
         if st.button("View All Trainers", key="view_all_trainers"):
@@ -1171,37 +1095,13 @@ def viewer_section(df_main):
                 else:
                     if not st.session_state.get("popup_dismissed_viewer_trainers_file_not_found"):
                         st.session_state["popup_dismissed_viewer_trainers_file_not_found"] = True
-                        st.markdown("""
-                        <div class="error-popup show-popup" id="popup_viewer_trainers_file_not_found">
-                            <p>EVALUATOR_INPUT.csv not found.</p>
-                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                        </div>
-                        <script>
-                            function closePopup(key) {{
-                                var popup = document.getElementById('popup_' + key);
-                                popup.remove();  // Directly removes the popup from the DOM
-                                
-                            }}
-                        </script>
-                        """, unsafe_allow_html=True)
+                        show_error_message("EVALUATOR_INPUT.csv not found.", "viewer_trainers_file_not_found")
                     return
             except Exception as e:
                 logger.error(f"Error viewing all trainers: {str(e)}")
                 if not st.session_state.get("popup_dismissed_view_trainers_error"):
                     st.session_state["popup_dismissed_view_trainers_error"] = True
-                    st.markdown("""
-                    <div class="error-popup show-popup" id="popup_view_trainers_error">
-                        <p>Failed to display trainer list.</p>
-                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                    </div>
-                    <script>
-                        function closePopup(key) {{
-                            var popup = document.getElementById('popup_' + key);
-                            popup.remove();  // Directly removes the popup from the DOM
-                            
-                        }}
-                    </script>
-                    """, unsafe_allow_html=True)
+                    show_error_message("Failed to display trainer list.", "view_trainers_error")
                 return
 
         if st.button("Logout", key="viewer_logout"):
@@ -1215,37 +1115,13 @@ def viewer_section(df_main):
                 logger.error(f"Error during logout: {str(e)}")
                 if not st.session_state.get("popup_dismissed_viewer_logout_error"):
                     st.session_state["popup_dismissed_viewer_logout_error"] = True
-                    st.markdown("""
-                    <div class="error-popup show-popup" id="popup_viewer_logout_error">
-                        <p>Failed to logout. Please try again.</p>
-                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                    </div>
-                    <script>
-                        function closePopup(key) {{
-                            var popup = document.getElementById('popup_' + key);
-                            popup.remove();  // Directly removes the popup from the DOM
-                            
-                        }}
-                    </script>
-                    """, unsafe_allow_html=True)
+                    show_error_message("Failed to logout. Please try again.", "viewer_logout_error")
                 return
     except Exception as e:
         logger.error(f"Error in viewer section: {str(e)}")
         if not st.session_state.get("popup_dismissed_viewer_dashboard_error"):
             st.session_state["popup_dismissed_viewer_dashboard_error"] = True
-            st.markdown("""
-            <div class="error-popup show-popup" id="popup_viewer_dashboard_error">
-                <p>An unexpected error occurred in the Viewer Dashboard.</p>
-                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-            </div>
-            <script>
-                function closePopup(key) {{
-                    var popup = document.getElementById('popup_' + key);
-                    popup.remove();  // Directly removes the popup from the DOM
-                    
-                }}
-            </script>
-            """, unsafe_allow_html=True)
+            show_error_message("An unexpected error occurred in the Viewer Dashboard.", "viewer_dashboard_error")
         return
 
 def admin_section(df_main):
@@ -1254,19 +1130,7 @@ def admin_section(df_main):
         if "logged_in" not in st.session_state or not st.session_state.get("logged_in"):
             if not st.session_state.get("popup_dismissed_admin_login_required"):
                 st.session_state["popup_dismissed_admin_login_required"] = True
-                st.markdown("""
-                <div class="error-popup show-popup" id="popup_admin_login_required">
-                    <p>Please login to access the admin panel.</p>
-                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                </div>
-                <script>
-                    function closePopup(key) {{
-                        var popup = document.getElementById('popup_' + key);
-                        popup.remove();  // Directly removes the popup from the DOM
-                        
-                    }}
-                </script>
-                """, unsafe_allow_html=True)
+                show_error_message("Please login to access the admin panel.", "admin_login_required")
             return
         evaluators_df = load_evaluators()
         st.markdown("### 🧑‍💻 Existing Evaluators")
@@ -1279,19 +1143,7 @@ def admin_section(df_main):
             logger.error(f"Error displaying evaluators list: {str(e)}")
             if not st.session_state.get("popup_dismissed_evaluators_list_error"):
                 st.session_state["popup_dismissed_evaluators_list_error"] = True
-                st.markdown("""
-                <div class="error-popup show-popup" id="popup_evaluators_list_error">
-                    <p>Failed to display evaluators list.</p>
-                    <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                </div>
-                <script>
-                    function closePopup(key) {{
-                        var popup = document.getElementById('popup_' + key);
-                        popup.remove();  // Directly removes the popup from the DOM
-                        
-                    }}
-                </script>
-                """, unsafe_allow_html=True)
+                show_error_message("Failed to display evaluators list.", "evaluators_list_error")
             return
         cols = st.columns([1, 1, 1, 1])
         if cols[0].button("Add New Evaluator"):
@@ -1339,19 +1191,7 @@ def admin_section(df_main):
                         logger.error(f"Error adding evaluator: {str(e)}")
                         if not st.session_state.get("popup_dismissed_add_evaluator_error"):
                             st.session_state["popup_dismissed_add_evaluator_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_add_evaluator_error">
-                                <p>Failed to add new evaluator.</p>
-                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {{
-                                    var popup = document.getElementById('popup_' + key);
-                                    popup.remove();  // Directly removes the popup from the DOM
-                                    
-                                }}
-                            </script>
-                            """, unsafe_allow_html=True)
+                            show_error_message("Failed to add new evaluator.", "add_evaluator_error")
         elif section == "existing_evaluators":
             st.markdown("### 🧑‍💻 Existing Evaluators")
             try:
@@ -1366,36 +1206,12 @@ def admin_section(df_main):
                         logger.error(f"Error navigating to trainer reports: {str(e)}")
                         if not st.session_state.get("popup_dismissed_back_to_main_existing_error"):
                             st.session_state["popup_dismissed_back_to_main_existing_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_back_to_main_existing_error">
-                                <p>Failed to navigate to trainer reports.</p>
-                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {{
-                                    var popup = document.getElementById('popup_' + key);
-                                    popup.remove();  // Directly removes the popup from the DOM
-                                    
-                                }}
-                            </script>
-                            """, unsafe_allow_html=True)
+                            show_error_message("Failed to navigate to trainer reports.", "back_to_main_existing_error")
             except Exception as e:
                 logger.error(f"Error displaying evaluators: {str(e)}")
                 if not st.session_state.get("popup_dismissed_evaluators_list_error"):
                     st.session_state["popup_dismissed_evaluators_list_error"] = True
-                    st.markdown("""
-                    <div class="error-popup show-popup" id="popup_evaluators_list_error">
-                        <p>Failed to display evaluators list.</p>
-                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                    </div>
-                    <script>
-                        function closePopup(key) {{
-                            var popup = document.getElementById('popup_' + key);
-                            popup.remove();  // Directly removes the popup from the DOM
-                            
-                        }}
-                    </script>
-                    """, unsafe_allow_html=True)
+                    show_error_message("Failed to display evaluators list.", "evaluators_list_error")
         elif section == "edit_evaluator":
             st.markdown("### 🧑‍💻 Edit Evaluator")
             selected_eval = st.selectbox("Select Evaluator to Edit", [""] + evaluators_df["username"].tolist(), key="select_eval_edit")
@@ -1433,36 +1249,12 @@ def admin_section(df_main):
                                 logger.error(f"Error editing evaluator: {str(e)}")
                                 if not st.session_state.get("popup_dismissed_edit_evaluator_error"):
                                     st.session_state["popup_dismissed_edit_evaluator_error"] = True
-                                    st.markdown("""
-                                    <div class="error-popup show-popup" id="popup_edit_evaluator_error">
-                                        <p>Failed to edit evaluator.</p>
-                                        <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                                    </div>
-                                    <script>
-                                        function closePopup(key) {{
-                                            var popup = document.getElementById('popup_' + key);
-                                            popup.remove();  // Directly removes the popup from the DOM
-                                            
-                                        }}
-                                    </script>
-                                    """, unsafe_allow_html=True)
+                                    show_error_message("Failed to edit evaluator.", "edit_evaluator_error")
                 except Exception as e:
                     logger.error(f"Error editing evaluator: {str(e)}")
                     if not st.session_state.get("popup_dismissed_edit_evaluator_error"):
                         st.session_state["popup_dismissed_edit_evaluator_error"] = True
-                        st.markdown("""
-                        <div class="error-popup show-popup" id="popup_edit_evaluator_error">
-                            <p>Failed to edit evaluator.</p>
-                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                        </div>
-                        <script>
-                            function closePopup(key) {{
-                                var popup = document.getElementById('popup_' + key);
-                                popup.remove();  // Directly removes the popup from the DOM
-                                
-                            }}
-                        </script>
-                        """, unsafe_allow_html=True)
+                        show_error_message("Failed to edit evaluator.", "edit_evaluator_error")
             # Single-click mechanism for Back to Main
             if st.button("Back to Main", key="back_to_main_edit"):
                 try:
@@ -1473,19 +1265,7 @@ def admin_section(df_main):
                     logger.error(f"Error navigating to trainer reports: {str(e)}")
                     if not st.session_state.get("popup_dismissed_back_to_main_edit_error"):
                         st.session_state["popup_dismissed_back_to_main_edit_error"] = True
-                        st.markdown("""
-                        <div class="error-popup show-popup" id="popup_back_to_main_edit_error">
-                            <p>Failed to navigate to trainer reports.</p>
-                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                        </div>
-                        <script>
-                            function closePopup(key) {{
-                                var popup = document.getElementById('popup_' + key);
-                                popup.remove();  // Directly removes the popup from the DOM
-                                
-                            }}
-                        </script>
-                        """, unsafe_allow_html=True)
+                        show_error_message("Failed to navigate to trainer reports.", "back_to_main_edit_error")
         elif section == "delete_evaluator":
             st.markdown("### 🧑‍💻 Delete Evaluator")
             selected_eval = st.selectbox("Select Evaluator to Delete", [""] + evaluators_df["username"].tolist(), key="select_eval_delete")
@@ -1499,19 +1279,7 @@ def admin_section(df_main):
                         logger.error(f"Error deleting evaluator: {str(e)}")
                         if not st.session_state.get("popup_dismissed_delete_evaluator_error"):
                             st.session_state["popup_dismissed_delete_evaluator_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_delete_evaluator_error">
-                                <p>Failed to delete evaluator.</p>
-                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {{
-                                    var popup = document.getElementById('popup_' + key);
-                                    popup.remove();  // Directly removes the popup from the DOM
-                                    
-                                }}
-                            </script>
-                            """, unsafe_allow_html=True)
+                            show_error_message("Failed to delete evaluator.", "delete_evaluator_error")
             # Single-click mechanism for Back to Main
             if st.button("Back to Main", key="back_to_main_delete"):
                 try:
@@ -1522,19 +1290,7 @@ def admin_section(df_main):
                     logger.error(f"Error navigating to trainer reports: {str(e)}")
                     if not st.session_state.get("popup_dismissed_back_to_main_delete_error"):
                         st.session_state["popup_dismissed_back_to_main_delete_error"] = True
-                        st.markdown("""
-                        <div class="error-popup show-popup" id="popup_back_to_main_delete_error">
-                            <p>Failed to navigate to trainer reports.</p>
-                            <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                        </div>
-                        <script>
-                            function closePopup(key) {{
-                                var popup = document.getElementById('popup_' + key);
-                                popup.remove();  // Directly removes the popup from the DOM
-                                
-                            }}
-                        </script>
-                        """, unsafe_allow_html=True)
+                        show_error_message("Failed to navigate to trainer reports.", "back_to_main_delete_error")
         else:
             try:
                 if df_main is None or df_main.empty:
@@ -1553,19 +1309,7 @@ def admin_section(df_main):
                         logger.error(f"Error filtering trainers: {str(e)}")
                         if not st.session_state.get("popup_dismissed_trainer_filter_error"):
                             st.session_state["popup_dismissed_trainer_filter_error"] = True
-                            st.markdown("""
-                            <div class="error-popup show-popup" id="popup_trainer_filter_error">
-                                <p>Failed to apply trainer filter.</p>
-                                <button class="ok-button" onclick="document.getElementById('popup_{key}').remove()">OK</button>
-                            </div>
-                            <script>
-                                function closePopup(key) {{
-                                    var popup = document.getElementById('popup_' + key);
-                                    popup.remove();  // Directly removes the popup from the DOM
-                                    
-                                }}
-                            </script>
-                            """, unsafe_allow_html=True)
+                            show_error_message("Failed to apply trainer filter.", "trainer_filter_error")
                         return
                 if not filtered.empty:
                     st.markdown("#### Matching Trainer Assessments")
